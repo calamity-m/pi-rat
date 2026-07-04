@@ -1,0 +1,10 @@
+node_modules/
+.pi/
+.pi/core-client-tls.json
+.pi/proxy-audit/
+test-fixtures/tls/generated/
+npm-debug.log*
+.DS_Store
+*.tgz
+__pycache__/
+*.pyc
