@@ -1,0 +1,73 @@
+{
+  "name": "pi-rat",
+  "version": "0.1.0",
+  "description": "A starter Pi package bundling themes, skills, extensions, and prompt templates.",
+  "keywords": [
+    "agent-skills",
+    "pi-coding-agent",
+    "pi-extension",
+    "pi-package",
+    "pi-theme"
+  ],
+  "license": "MIT",
+  "files": [
+    "extensions/",
+    "skills/",
+    "prompts/",
+    "themes/",
+    "docs/",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "tsc --noEmit && node --test tests/*.test.mjs",
+    "test:smoke": "node --test tests/smoke.test.mjs",
+    "validate:json": "node -e \"for (const f of ['themes/kanagawa.json','package.json']) JSON.parse(require('fs').readFileSync(f,'utf8')); console.log('json ok')\"",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "lint": "oxlint .",
+    "smoke:proxy-audit": "node tests/smoke-proxy-audit.mjs",
+    "smoke:proxy-reload": "node tests/smoke-proxy-reload.mjs",
+    "smoke:permissions": "node tests/smoke-permissions.mjs",
+    "pack:dry-run": "npm pack --dry-run"
+  },
+  "dependencies": {
+    "http-proxy-agent": "^7.0.2",
+    "https-proxy-agent": "^7.0.6",
+    "proxy-from-env": "^1.1.0"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-agent-core": "0.80.3",
+    "@earendil-works/pi-ai": "0.80.3",
+    "@earendil-works/pi-coding-agent": "0.80.3",
+    "@earendil-works/pi-tui": "0.80.3",
+    "@types/proxy-from-env": "^1.0.4",
+    "oxfmt": "^0.53.0",
+    "oxlint": "^1.68.0",
+    "typebox": "*",
+    "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-agent-core": "0.80.3",
+    "@earendil-works/pi-ai": "0.80.3",
+    "@earendil-works/pi-coding-agent": "0.80.3",
+    "@earendil-works/pi-tui": "0.80.3",
+    "typebox": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ],
+    "skills": [
+      "./skills"
+    ],
+    "prompts": [
+      "./prompts"
+    ],
+    "themes": [
+      "./themes"
+    ]
+  }
+}

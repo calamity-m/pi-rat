@@ -1,0 +1,25 @@
+[[repos]]
+repo = "builtin"
+hooks = [
+  { id = "trailing-whitespace" },
+  { id = "end-of-file-fixer" },
+  { id = "check-merge-conflict" },
+  { id = "detect-private-key" },
+  { id = "check-added-large-files" },
+]
+
+[[repos]]
+repo = "local"
+hooks = [
+  { id = "oxfmt", name = "oxfmt", entry = "npm run format", language = "system", pass_filenames = false, types_or = [
+    "javascript",
+    "ts",
+    "json",
+    "markdown",
+  ] },
+  { id = "oxlint", name = "oxlint", entry = "npm run lint", language = "system", pass_filenames = false, types_or = [
+    "javascript",
+    "ts",
+  ] },
+  { id = "npm-test", name = "npm test", entry = "npm test", language = "system", pass_filenames = false },
+]
