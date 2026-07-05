@@ -16,13 +16,18 @@ export interface SearchPanelTheme {
   fg(color: string, text: string): string;
 }
 
+/** Color function for search panel frame lines. */
+export type SearchPanelBorderColor = (text: string) => string;
+
 /** Shared panel chrome renderer for titled panels with no side borders. */
 export class PanelChrome {
   private readonly theme: SearchPanelTheme;
+  private readonly borderColor: SearchPanelBorderColor;
 
   /** Build a panel chrome renderer using the provided color theme. */
-  constructor(theme: SearchPanelTheme) {
+  constructor(theme: SearchPanelTheme, borderColor?: SearchPanelBorderColor) {
     this.theme = theme;
+    this.borderColor = borderColor ?? ((text) => theme.fg("border", text));
   }
 
   /** Render edge-to-edge rules, a visible title row, and padded content rows. */
@@ -39,7 +44,7 @@ export class PanelChrome {
 
   /** Render an edge-to-edge horizontal rule. */
   horizontalRule(width: number): string {
-    return this.theme.fg("border", "─".repeat(Math.max(0, width)));
+    return this.borderColor("─".repeat(Math.max(0, width)));
   }
 
   /** Render one content line with right padding and no side borders. */
@@ -88,6 +93,8 @@ export interface SearchPanelOptions<T> {
   keybindings: PanelKeybindings;
   /** Request a TUI render after state changes. */
   requestRender: () => void;
+  /** Optional frame color. Defaults to the prompt border color. */
+  borderColor?: SearchPanelBorderColor;
   /** Convert source rows and the current query into display rows. */
   filterRows: (rows: readonly T[], query: string) => readonly T[];
   /** Render one row label. Selection prefix and clipping are handled by the panel. */
@@ -114,7 +121,7 @@ export class SearchPanel<T> extends Container implements Focusable {
     super();
     this.rows = options.rows;
     this.options = options;
-    this.chrome = new PanelChrome(options.theme);
+    this.chrome = new PanelChrome(options.theme, options.borderColor);
     this.input = new Input();
     this.input.setValue(options.initialQuery ?? "");
     this.addChild(this.input);

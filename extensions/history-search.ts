@@ -9,6 +9,7 @@ import {
 import type { KeyId } from "@earendil-works/pi-tui";
 
 import { SearchPanel } from "./lib/search-panel.ts";
+import { currentThinkingBorderColor } from "./lib/thinking-border.ts";
 
 /** Maximum number of live matches to show in the picker. */
 const MAX_RESULTS = 10;
@@ -126,6 +127,7 @@ async function runHistorySearch(
           theme,
           keybindings,
           requestRender: () => tui.requestRender(),
+          borderColor: currentThinkingBorderColor(ctx, theme),
           filterRows: (messages, query) =>
             searchMessages(messages, query, Number.POSITIVE_INFINITY).map(
               (result) => result.message,

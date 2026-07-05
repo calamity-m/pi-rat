@@ -6,6 +6,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import { SearchPanel } from "./lib/search-panel.ts";
+import { currentThinkingBorderColor } from "./lib/thinking-border.ts";
 
 /** Maximum number of skill rows visible without scrolling. */
 const VISIBLE_ROWS = 12;
@@ -55,6 +56,7 @@ async function runSkillsPicker(ctx: ExtensionCommandContext): Promise<void> {
       theme,
       keybindings,
       requestRender: () => tui.requestRender(),
+      borderColor: currentThinkingBorderColor(ctx, theme),
       filterRows,
       renderRow: (row) => skillLine(row),
       onSelect: done,
