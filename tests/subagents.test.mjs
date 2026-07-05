@@ -17,6 +17,8 @@ const files = [
   "settings.ts",
   "preset-agents.ts",
   "prompt.ts",
+  "tool-summary.ts",
+  "display.ts",
 ];
 
 before(async () => {
@@ -34,13 +36,15 @@ before(async () => {
       .outputText.replaceAll('.ts"', '.mjs"');
     await writeFile(join(compiledDir, file.replace(/\.ts$/, ".mjs")), compiled, "utf8");
   }
-  const [model, settings, prompt, store] = await Promise.all([
+  const [model, settings, prompt, store, toolSummary, display] = await Promise.all([
     import(`${pathToFileURL(join(compiledDir, "model-resolution.mjs")).href}?t=${Date.now()}`),
     import(`${pathToFileURL(join(compiledDir, "settings.mjs")).href}?t=${Date.now()}`),
     import(`${pathToFileURL(join(compiledDir, "prompt.mjs")).href}?t=${Date.now()}`),
     import(`${pathToFileURL(join(compiledDir, "store.mjs")).href}?t=${Date.now()}`),
+    import(`${pathToFileURL(join(compiledDir, "tool-summary.mjs")).href}?t=${Date.now()}`),
+    import(`${pathToFileURL(join(compiledDir, "display.mjs")).href}?t=${Date.now()}`),
   ]);
-  helpers = { ...model, ...settings, ...prompt, ...store };
+  helpers = { ...model, ...settings, ...prompt, ...store, ...toolSummary, ...display };
 });
 
 after(async () => {
@@ -204,5 +208,81 @@ describe("subagent prompt and preset helpers", () => {
     );
     assert.match(text, /stop/);
     assert.match(text, /partial/);
+  });
+});
+
+describe("subagent overlay display helpers", () => {
+  test("formatCompactToolSummary produces one-line summaries for common tools", () => {
+    assert.equal(
+      helpers.formatCompactToolSummary({
+        name: "read",
+        args: { path: "package.json", limit: 20 },
+        result: { content: [{ type: "text", text: "line 1\nline 2" }] },
+      }),
+      "✓ read package.json (20 lines) · 2 lines",
+    );
+    assert.match(
+      helpers.formatCompactToolSummary({
+        name: "grep",
+        args: { pattern: "spawn_subagent", path: "extensions" },
+        result: { content: [{ type: "text", text: "one match" }] },
+      }),
+      /^✓ grep “spawn_subagent” in extensions · \d+ chars$/,
+    );
+    assert.equal(
+      helpers.formatCompactToolSummary({ name: "bash", args: { command: "npm test" } }),
+      "… bash npm test",
+    );
+  });
+
+  test("formatCompactToolSummary omits successful tool result bodies", () => {
+    const summary = helpers.formatCompactToolSummary({
+      name: "read",
+      args: { path: "secret.txt" },
+      result: { content: [{ type: "text", text: "super secret\nfile contents" }] },
+    });
+    assert.match(summary, /^✓ read secret\.txt · 2 lines$/);
+    assert.doesNotMatch(summary, /super secret|file contents/);
+  });
+
+  test("formatCompactToolSummary includes a short error summary", () => {
+    const summary = helpers.formatCompactToolSummary({
+      name: "read",
+      args: { path: "missing.txt" },
+      result: { content: [{ type: "text", text: "ENOENT: no such file\nstack trace" }] },
+      isError: true,
+    });
+    assert.match(summary, /^✗ read missing\.txt · error: ENOENT: no such file$/);
+  });
+
+  test("compactDisplayedSubagentPrompt hides preloaded file dumps but keeps task context", () => {
+    const prompt = [
+      "You are an isolated ephemeral subagent spawned by a parent Pi session.",
+      "",
+      "Context:",
+      "Repo context",
+      "",
+      "Preloaded files:",
+      "### README.md",
+      "```",
+      "large file body",
+      "```",
+      "",
+      "Relevant file paths:",
+      "- README.md",
+      "",
+      "Task:",
+      "Inspect it",
+    ].join("\n");
+    const compact = helpers.compactDisplayedSubagentPrompt(prompt);
+    assert.match(compact, /Preloaded files:\n\[omitted from overlay/);
+    assert.match(compact, /Relevant file paths:\n- README\.md/);
+    assert.match(compact, /Task:\nInspect it/);
+    assert.doesNotMatch(compact, /large file body|```/);
+  });
+
+  test("compactDisplayedSubagentPrompt leaves prompts without preloaded files unchanged", () => {
+    const prompt = "Context:\nRepo context\n\nTask:\nInspect it";
+    assert.equal(helpers.compactDisplayedSubagentPrompt(prompt), prompt);
   });
 });

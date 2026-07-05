@@ -1,12 +1,11 @@
 import {
   AssistantMessageComponent,
   getMarkdownTheme,
-  ToolExecutionComponent,
   UserMessageComponent,
   type ExtensionCommandContext,
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { Key, matchesKey, type Component, type TUI } from "@earendil-works/pi-tui";
+import { Key, matchesKey, type Component } from "@earendil-works/pi-tui";
 
 import {
   NestedPickerPanel,
@@ -14,12 +13,13 @@ import {
   type NestedPickerRow,
 } from "../lib/nested-picker-panel.ts";
 import { OverlayPanel, rightOverlayOptions, type OverlayPanelTheme } from "../lib/overlay.ts";
-import { currentThinkingBorderColor } from "../lib/thinking-border.ts";
+import { compactDisplayedSubagentPrompt } from "./display.ts";
 import { formatCanonicalModelId, normalizeThinkingLevel } from "./model-resolution.ts";
 import type { PresetAgent } from "./preset-agents.ts";
 import { readSubagentSettings, writeSubagentTier } from "./settings.ts";
 import type { SettingTier, SubagentRun } from "./types.ts";
 import { formatElapsed, formatRunSource, statusIcon, SubagentStore, truncate } from "./store.ts";
+import { formatCompactToolSummary } from "./tool-summary.ts";
 import { THINKING_LEVELS } from "./types.ts";
 
 interface RowValue {
@@ -93,7 +93,6 @@ async function showDashboard(
       theme,
       keybindings,
       requestRender,
-      borderColor: currentThinkingBorderColor(ctx, theme),
       onCancel: () => done(),
       renderContent: ({ row }) => renderContent(ctx, theme, keybindings, requestRender, store, row),
     });
@@ -293,14 +292,14 @@ class RunDetailsContent implements Component {
       (tui, theme, _keybindings, done) => {
         const panel = new OverlayPanel({
           title: `subagent ${this.runId}`,
-          sections: this.overlaySections(theme as OverlayPanelTheme, tui),
+          sections: this.overlaySections(theme as OverlayPanelTheme),
           theme: theme as OverlayPanelTheme,
           requestRender: () => tui.requestRender(),
           footerText: "q close • j/k scroll",
           onClose: () => done(),
         });
         const unsubscribe = this.store.subscribe(() => {
-          panel.setSections(this.overlaySections(theme as OverlayPanelTheme, tui));
+          panel.setSections(this.overlaySections(theme as OverlayPanelTheme));
         });
         return Object.assign(panel, { dispose: unsubscribe });
       },
@@ -311,7 +310,7 @@ class RunDetailsContent implements Component {
     );
   }
 
-  private overlaySections(theme: OverlayPanelTheme, tui: TUI) {
+  private overlaySections(theme: OverlayPanelTheme) {
     const run = this.store.get(this.runId);
     if (!run) return [{ title: "Missing", content: ["Run not found."] }];
     return [
@@ -329,7 +328,7 @@ class RunDetailsContent implements Component {
       { title: "Task", content: run.task },
       ...(run.error ? [{ title: "Error", content: run.error }] : []),
       ...(run.finalText ? [{ title: "Final answer", content: run.finalText }] : []),
-      { title: "Live session", content: new PiSessionTranscriptContent(run, tui, this.ctx.cwd) },
+      { title: "Live session", content: new PiSessionTranscriptContent(run, theme) },
     ];
   }
 }
@@ -337,8 +336,7 @@ class RunDetailsContent implements Component {
 class PiSessionTranscriptContent implements Component {
   constructor(
     private readonly run: SubagentRun,
-    private readonly tui: TUI,
-    private readonly cwd: string,
+    private readonly theme: OverlayPanelTheme,
   ) {}
 
   render(width: number): string[] {
@@ -354,7 +352,7 @@ class PiSessionTranscriptContent implements Component {
         if (message) lines.push(...renderPiMessage(message, width));
       } else {
         const tool = state.tools.get(entry.key);
-        if (tool) lines.push(...renderPiTool(tool, this.tui, this.cwd, width));
+        if (tool) lines.push(renderPiTool(tool, this.theme));
       }
     }
     return lines.length ? lines : ["Transcript not available yet."];
@@ -450,45 +448,17 @@ function renderPiMessage(message: unknown, width: number): string[] {
   }
   if (role === "user") {
     return new UserMessageComponent(
-      messageContentToText((message as { content?: unknown }).content),
+      compactDisplayedSubagentPrompt(
+        messageContentToText((message as { content?: unknown }).content),
+      ),
       getMarkdownTheme(),
     ).render(width);
   }
   return [JSON.stringify(message, null, 2)];
 }
 
-function renderPiTool(tool: LiveToolState, tui: TUI, cwd: string, width: number): string[] {
-  const component = new ToolExecutionComponent(
-    tool.name,
-    tool.id,
-    tool.args,
-    undefined,
-    undefined,
-    tui,
-    cwd,
-  );
-  if (tool.started) component.markExecutionStarted();
-  if (tool.partialResult !== undefined)
-    component.updateResult(toToolResult(tool.partialResult, false), true);
-  if (tool.result !== undefined)
-    component.updateResult(toToolResult(tool.result, tool.isError === true), false);
-  return component.render(width);
-}
-
-function toToolResult(
-  value: unknown,
-  isError: boolean,
-): {
-  content: Array<{ type: string; text?: string; data?: string; mimeType?: string }>;
-  details?: unknown;
-  isError: boolean;
-} {
-  const record =
-    Boolean(value) && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
-  const content = Array.isArray(record?.content)
-    ? (record.content as Array<{ type: string; text?: string; data?: string; mimeType?: string }>)
-    : [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value, null, 2) }];
-  return { content, details: record?.details, isError: record?.isError === true || isError };
+function renderPiTool(tool: LiveToolState, theme: OverlayPanelTheme): string {
+  return theme.fg("muted", formatCompactToolSummary(tool));
 }
 
 function messageContentToText(content: unknown): string {
@@ -586,7 +556,12 @@ class SettingsContent implements Component {
       .getAll()
       .filter((model) => this.ctx.modelRegistry.hasConfiguredAuth(model));
     const choices = models.map(formatCanonicalModelId).sort();
-    this.picker = { kind: "model", title: `Select ${this.tier} tier model`, choices, selectedIndex: 0 };
+    this.picker = {
+      kind: "model",
+      title: `Select ${this.tier} tier model`,
+      choices,
+      selectedIndex: 0,
+    };
     this.requestRender();
   }
 
@@ -651,7 +626,10 @@ class SettingsContent implements Component {
         });
       } else {
         const current = (await readSubagentSettings()).settings.tiers[this.tier];
-        await writeSubagentTier(this.tier, { model: choice, thinkingLevel: current?.thinkingLevel });
+        await writeSubagentTier(this.tier, {
+          model: choice,
+          thinkingLevel: current?.thinkingLevel,
+        });
       }
     });
   }
