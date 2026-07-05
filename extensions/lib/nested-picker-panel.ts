@@ -215,6 +215,13 @@ export class NestedPickerPanel<TValue = unknown> extends Container implements Fo
     }
   }
 
+  /** Replace root rows and reconcile the current breadcrumb by stable row id. */
+  setRows(rows: readonly NestedPickerRow<TValue>[]): void {
+    this.options.rows = rows;
+    this.reconcilePath();
+    this.options.requestRender();
+  }
+
   /** Clear cached child render state. */
   invalidate(): void {
     super.invalidate();
@@ -414,6 +421,28 @@ export class NestedPickerPanel<TValue = unknown> extends Container implements Fo
 
   private visibleRows(): number {
     return Math.max(1, this.options.visibleRows ?? 10);
+  }
+
+  private reconcilePath(): void {
+    let rows = this.options.rows;
+    const nextPath: NestedPickerRow<TValue>[] = [];
+    for (const segment of this.path) {
+      const replacement = rows.find((row) => row.id === segment.id);
+      if (!replacement) break;
+      nextPath.push(replacement);
+      rows = replacement.children ?? [];
+    }
+    this.path = nextPath;
+    if (this.activeLeaf) {
+      const replacement = rows.find((row) => row.id === this.activeLeaf?.id);
+      if (replacement && !hasChildren(replacement)) this.activeLeaf = replacement;
+      else {
+        this.activeLeaf = undefined;
+        this.activeContent = undefined;
+      }
+    }
+    this.syncInputToLevel();
+    this.applyFocus();
   }
 
   private clampSelection(state: LevelState, rowCount: number): void {
