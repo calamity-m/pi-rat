@@ -6,11 +6,28 @@ import { pathToFileURL } from "node:url";
 import ts from "typescript";
 
 const projectRoot = resolve(import.meta.dirname, "..");
-const compiledPath = join(projectRoot, ".usage-helpers.test.mjs");
+const compiledSubscriptionPath = join(projectRoot, ".usage-subscriptions.test.mjs");
+const compiledTokensPath = join(projectRoot, ".usage-tokens.test.mjs");
 let helpers;
 
 before(async () => {
-  const source = await readFile(join(projectRoot, "extensions/usage/helpers.ts"), "utf8");
+  await compileUsageModule("extensions/usage/subscriptions/index.ts", compiledSubscriptionPath);
+  await compileUsageModule("extensions/usage/tokens/index.ts", compiledTokensPath);
+
+  const subscriptions = await import(
+    `${pathToFileURL(compiledSubscriptionPath).href}?t=${Date.now()}`
+  );
+  const tokens = await import(`${pathToFileURL(compiledTokensPath).href}?t=${Date.now()}`);
+  helpers = { ...subscriptions, ...tokens };
+});
+
+after(async () => {
+  await rm(compiledSubscriptionPath, { force: true });
+  await rm(compiledTokensPath, { force: true });
+});
+
+async function compileUsageModule(sourcePath, outputPath) {
+  const source = await readFile(join(projectRoot, sourcePath), "utf8");
   const compiled = ts.transpileModule(source, {
     compilerOptions: {
       target: ts.ScriptTarget.ES2022,
@@ -18,13 +35,8 @@ before(async () => {
       verbatimModuleSyntax: true,
     },
   }).outputText;
-  await writeFile(compiledPath, compiled, "utf8");
-  helpers = await import(`${pathToFileURL(compiledPath).href}?t=${Date.now()}`);
-});
-
-after(async () => {
-  await rm(compiledPath, { force: true });
-});
+  await writeFile(outputPath, compiled, "utf8");
+}
 
 function jwt(payload) {
   const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
