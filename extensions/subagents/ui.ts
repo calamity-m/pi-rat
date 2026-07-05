@@ -6,7 +6,7 @@ import {
   type ExtensionCommandContext,
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import type { Component, TUI } from "@earendil-works/pi-tui";
+import { Key, matchesKey, type Component, type TUI } from "@earendil-works/pi-tui";
 
 import {
   NestedPickerPanel,
@@ -93,7 +93,7 @@ async function showDashboard(
       keybindings,
       requestRender,
       onCancel: () => done(),
-      renderContent: ({ row }) => renderContent(ctx, theme, requestRender, store, row),
+      renderContent: ({ row }) => renderContent(ctx, theme, keybindings, requestRender, store, row),
     });
     const unsubscribe = store.subscribe(() => panel.setRows(buildRows(store, presets)));
     return {
@@ -192,6 +192,7 @@ function runRows(
 function renderContent(
   ctx: ExtensionCommandContext,
   theme: NestedPickerPanelTheme,
+  keybindings: { matches(data: string, id: string): boolean },
   requestRender: () => void,
   store: SubagentStore,
   row: NestedPickerRow<RowValue>,
@@ -206,7 +207,7 @@ function renderContent(
       value.runId,
     );
   if (value?.kind === "setting" && value.tier)
-    return new SettingsContent(ctx, theme, requestRender, value.tier);
+    return new SettingsContent(ctx, theme, requestRender, keybindings, value.tier);
   if (value?.kind === "preset" && value.preset) {
     const p = value.preset;
     return [
@@ -228,6 +229,8 @@ function renderContent(
 }
 
 class RunDetailsContent implements Component {
+  private confirmCancel = false;
+
   constructor(
     private readonly ctx: ExtensionCommandContext,
     private readonly theme: OverlayPanelTheme,
@@ -239,6 +242,7 @@ class RunDetailsContent implements Component {
   render(): string[] {
     const run = this.store.get(this.runId);
     if (!run) return ["Run not found."];
+    const canCancel = run.status === "queued" || run.status === "running";
     return [
       `${run.id} ${run.status} (${formatElapsed(run)})`,
       `model: ${run.modelId} (${formatRunSource(run)})`,
@@ -247,27 +251,38 @@ class RunDetailsContent implements Component {
       "",
       truncate(run.task, 120),
       "",
-      "o/enter overlay • x cancel • X cancel with notes",
+      this.confirmCancel
+        ? this.theme.fg("warning", "Press x again to cancel this subagent • c abort")
+        : canCancel
+          ? "o/enter overlay • x cancel"
+          : "o/enter overlay",
     ].filter(Boolean);
   }
 
   handleInput(data: string): void {
+    if (this.confirmCancel) {
+      if (data === "x") this.abort();
+      if (data === "c") {
+        this.confirmCancel = false;
+        this.requestRender();
+      }
+      return;
+    }
+
     if (data === "o" || data === "\r") void this.openOverlay();
-    if (data === "x") void this.cancel(false);
-    if (data === "X") void this.cancel(true);
+    if (data === "x") {
+      this.confirmCancel = true;
+      this.requestRender();
+    }
   }
 
   invalidate(): void {}
 
-  private async cancel(withNotes: boolean): Promise<void> {
+  private abort(): void {
     const run = this.store.get(this.runId);
     if (!run || (run.status !== "queued" && run.status !== "running")) return;
-    const ok = await this.ctx.ui.confirm("Cancel subagent", `Cancel ${run.id}?`);
-    if (!ok) return;
-    const notes = withNotes
-      ? await this.ctx.ui.input("Cancellation notes", "optional notes")
-      : undefined;
-    this.store.abort(run.id, notes);
+    this.store.abort(run.id);
+    this.confirmCancel = false;
     this.requestRender();
   }
 
@@ -501,26 +516,52 @@ function liveMessageKey(message: unknown): string {
 class SettingsContent implements Component {
   private lines = ["Loading settings…"];
   private busy = false;
+  private picker:
+    | { kind: "model" | "thinking"; title: string; choices: string[]; selectedIndex: number }
+    | undefined;
+  private confirmUnset = false;
 
   constructor(
     private readonly ctx: ExtensionCommandContext,
     private readonly theme: NestedPickerPanelTheme,
     private readonly requestRender: () => void,
+    private readonly keybindings: { matches(data: string, id: string): boolean },
     private readonly tier: SettingTier,
   ) {
     void this.reload();
   }
 
   render(): string[] {
-    return this.lines;
+    if (!this.picker) return this.lines;
+    return [
+      this.picker.title,
+      ...this.picker.choices.map((choice, index) => {
+        const line = `${index === this.picker?.selectedIndex ? "→" : " "} ${choice}`;
+        return index === this.picker?.selectedIndex ? this.theme.fg("accent", line) : line;
+      }),
+      "",
+      "↑↓ navigate • enter select • c cancel",
+    ];
   }
   invalidate(): void {}
 
   handleInput(data: string): void {
     if (this.busy) return;
-    if (data === "s") void this.selectModel();
-    if (data === "t") void this.selectThinking();
-    if (data === "u") void this.unset();
+    if (this.picker) {
+      this.handlePickerInput(data);
+      return;
+    }
+    if (this.confirmUnset) {
+      if (data === "u") void this.unsetNow();
+      if (data === "c") {
+        this.confirmUnset = false;
+        void this.reload();
+      }
+      return;
+    }
+    if (data === "s") this.showModelPicker();
+    if (data === "t") void this.showThinkingPicker();
+    if (data === "u") this.showUnsetConfirm();
     if (data === "r") void this.reload();
   }
 
@@ -538,50 +579,89 @@ class SettingsContent implements Component {
     this.requestRender();
   }
 
-  private async selectModel(): Promise<void> {
-    await this.withBusy(async () => {
-      const models = this.ctx.modelRegistry
-        .getAll()
-        .filter((model) => this.ctx.modelRegistry.hasConfiguredAuth(model));
-      const choices = models.map(formatCanonicalModelId).sort();
-      const choice = await this.ctx.ui.select(`Select ${this.tier} tier model`, choices);
-      if (!choice) return;
-      const current = (await readSubagentSettings()).settings.tiers[this.tier];
-      await writeSubagentTier(this.tier, { model: choice, thinkingLevel: current?.thinkingLevel });
-    });
+  private showModelPicker(): void {
+    const models = this.ctx.modelRegistry
+      .getAll()
+      .filter((model) => this.ctx.modelRegistry.hasConfiguredAuth(model));
+    const choices = models.map(formatCanonicalModelId).sort();
+    this.picker = { kind: "model", title: `Select ${this.tier} tier model`, choices, selectedIndex: 0 };
+    this.requestRender();
   }
 
-  private async selectThinking(): Promise<void> {
+  private async showThinkingPicker(): Promise<void> {
+    const current = (await readSubagentSettings()).settings.tiers[this.tier];
+    if (!current) {
+      this.ctx.ui.notify("Select a model with s before setting thinking level", "warning");
+      return;
+    }
+    this.picker = {
+      kind: "thinking",
+      title: `Select ${this.tier} thinking level`,
+      choices: ["unset", ...THINKING_LEVELS],
+      selectedIndex: 0,
+    };
+    this.requestRender();
+  }
+
+  private showUnsetConfirm(): void {
+    this.confirmUnset = true;
+    this.lines = [
+      `${this.tier} tier`,
+      this.theme.fg("warning", `Press u again to unset ${this.tier} tier mapping • c cancel`),
+    ];
+    this.requestRender();
+  }
+
+  private handlePickerInput(data: string): void {
+    if (!this.picker) return;
+    if (data === "c") {
+      this.picker = undefined;
+      void this.reload();
+      return;
+    }
+    if (!this.picker.choices.length) return;
+    if (this.keybindings.matches(data, "tui.select.up") || matchesKey(data, Key.up)) {
+      this.picker.selectedIndex =
+        (this.picker.selectedIndex + this.picker.choices.length - 1) % this.picker.choices.length;
+      this.requestRender();
+      return;
+    }
+    if (this.keybindings.matches(data, "tui.select.down") || matchesKey(data, Key.down)) {
+      this.picker.selectedIndex = (this.picker.selectedIndex + 1) % this.picker.choices.length;
+      this.requestRender();
+      return;
+    }
+    if (this.keybindings.matches(data, "tui.select.confirm") || data === "\r") {
+      void this.applyPickerChoice(this.picker.choices[this.picker.selectedIndex]);
+    }
+  }
+
+  private async applyPickerChoice(choice: string | undefined): Promise<void> {
+    if (!choice || !this.picker) return;
+    const pickerKind = this.picker.kind;
     await this.withBusy(async () => {
-      const current = (await readSubagentSettings()).settings.tiers[this.tier];
-      if (!current) {
-        this.ctx.ui.notify("Select a model with s before setting thinking level", "warning");
-        return;
+      if (pickerKind === "thinking") {
+        const current = (await readSubagentSettings()).settings.tiers[this.tier];
+        if (!current) return;
+        await writeSubagentTier(this.tier, {
+          model: current.model,
+          thinkingLevel: choice === "unset" ? undefined : normalizeThinkingLevel(choice),
+        });
+      } else {
+        const current = (await readSubagentSettings()).settings.tiers[this.tier];
+        await writeSubagentTier(this.tier, { model: choice, thinkingLevel: current?.thinkingLevel });
       }
-      const choice = await this.ctx.ui.select(`Select ${this.tier} thinking level`, [
-        "unset",
-        ...THINKING_LEVELS,
-      ]);
-      if (!choice) return;
-      await writeSubagentTier(this.tier, {
-        model: current.model,
-        thinkingLevel: choice === "unset" ? undefined : normalizeThinkingLevel(choice),
-      });
     });
   }
 
-  private async unset(): Promise<void> {
-    await this.withBusy(async () => {
-      const ok = await this.ctx.ui.confirm(
-        "Unset subagent tier",
-        `Unset ${this.tier} tier mapping?`,
-      );
-      if (ok) await writeSubagentTier(this.tier, undefined);
-    });
+  private async unsetNow(): Promise<void> {
+    await this.withBusy(async () => writeSubagentTier(this.tier, undefined));
   }
 
   private async withBusy(action: () => Promise<void>): Promise<void> {
     this.busy = true;
+    this.picker = undefined;
+    this.confirmUnset = false;
     this.lines = ["Saving…"];
     this.requestRender();
     try {

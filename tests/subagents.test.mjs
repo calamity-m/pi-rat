@@ -123,6 +123,13 @@ describe("subagent model helpers", () => {
   });
 });
 
+describe("subagent TUI guardrails", () => {
+  test("dashboard does not open nested Pi modal prompts", async () => {
+    const source = await readFile(join(sourceDir, "ui.ts"), "utf8");
+    assert.doesNotMatch(source, /ctx\.ui\.(?:select|confirm|input)\s*\(/);
+  });
+});
+
 describe("subagent settings helpers", () => {
   test("parseSubagentSettings reads valid tiers and warns on invalid shapes", () => {
     const result = helpers.parseSubagentSettings({
