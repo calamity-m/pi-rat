@@ -108,3 +108,5 @@ ChatGPT Codex usage uses Pi's existing ChatGPT OAuth credential from `/login`; a
 The bundled footer extension uses Pi's session name (`pi --name ...` or `/name`) as an instance label. The label appears beside the prompt state (`● ready · label`) and in the terminal/window title.
 
 Use `/label <name>` to set the label from inside Pi, `/label` to show the current label, and `/label --clear` to clear it.
+
+Use `/colour` to pick a temporary editor border/label colour for the running instance. `/colour <name>` accepts `blue`, `cyan`, `green`, `yellow`, `orange`, `red`, `pink`, or `purple`; `/colour #rrggbb` accepts a custom RGB colour; `/colour --clear` restores the normal thinking-level border colour. The colour is in-memory only and does not survive `/reload` or restart.
