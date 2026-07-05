@@ -189,6 +189,61 @@ describe("NestedPickerPanel navigation and rendering", () => {
     assert.match(visibleText(picker), /content tools tools/);
   });
 
+  test("search input keeps editor keys for cursor movement and deletion", () => {
+    const picker = panel({
+      enableSearch: true,
+      rows: [
+        { id: "ac", label: "ac" },
+        { id: "abc", label: "abc" },
+      ],
+    });
+
+    for (const char of "abc") picker.handleInput(char);
+    picker.handleInput("\x1b[D");
+    picker.handleInput("\x7f");
+
+    const text = visibleText(picker);
+    assert.match(text, /ac/);
+    assert.doesNotMatch(text, /abc/);
+  });
+
+  test("string leaf content scrolls inside the nested panel", () => {
+    const picker = panel({
+      visibleRows: 3,
+      rows: [{ id: "leaf", label: "leaf" }],
+      renderContent: () => Array.from({ length: 8 }, (_, index) => `line ${index}`),
+    });
+
+    picker.handleInput("enter");
+    assert.match(visibleText(picker), /line 0/);
+    assert.doesNotMatch(visibleText(picker), /line 4/);
+
+    picker.handleInput("down");
+    const text = visibleText(picker);
+    assert.doesNotMatch(text, /line 0/);
+    assert.match(text, /line 1/);
+    assert.match(text, /line 3/);
+  });
+
+  test("long string leaf lines wrap before scrolling", () => {
+    const picker = panel({
+      visibleRows: 2,
+      rows: [{ id: "leaf", label: "leaf" }],
+      renderContent: () => "alpha bravo charlie delta echo foxtrot golf hotel india juliet",
+    });
+
+    picker.handleInput("enter");
+    const before = visibleText(picker, 24);
+    assert.match(before, /alpha bravo/);
+    assert.doesNotMatch(before, /india juliet/);
+
+    picker.handleInput("down");
+    picker.handleInput("down");
+    const after = visibleText(picker, 24);
+    assert.doesNotMatch(after, /alpha bravo/);
+    assert.match(after, /india juliet/);
+  });
+
   test("clips long row labels and content to the requested width", () => {
     const longPicker = panel({
       rows: [{ id: "long", label: "a".repeat(100) }],

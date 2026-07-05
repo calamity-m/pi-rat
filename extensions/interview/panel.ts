@@ -15,7 +15,9 @@ export class InterviewPanel implements Focusable {
   private reviewMode = false;
   private readonly selected = new Map<string, Set<string>>();
   private readonly custom = new Map<string, string>();
+  private readonly customCursor = new Map<string, number>();
   private readonly notes = new Map<string, Map<string, string>>();
+  private readonly notesCursor = new Map<string, Map<string, number>>();
   private readonly input: InterviewInput;
   private readonly tui: TUI;
   private readonly theme: Theme;
@@ -158,12 +160,13 @@ export class InterviewPanel implements Focusable {
       const row = question.options.length;
       const active = this.selectedRow === row;
       const value = this.custom.get(question.id) ?? "";
-      const cursor = this.typingCustom ? "█" : "";
       const prompt = this.typingCustom ? "Editing custom answer" : "Type something";
       const prefix = `${active ? "❯" : " "} ${row + 1}. ${prompt}`;
       const wrapped = wrapCustomAnswer(
         prefix,
-        value || this.typingCustom ? `${value}${cursor}` : "",
+        value || this.typingCustom
+          ? this.valueWithCursor(value, this.customCursorFor(question))
+          : "",
         width,
       );
       lines.push(
@@ -174,7 +177,7 @@ export class InterviewPanel implements Focusable {
           this.theme.fg(
             "dim",
             this.typingCustom
-              ? "   Type text · Enter save · Esc stop editing"
+              ? "   Type text · ←/→ move cursor · Enter save · Esc stop editing"
               : "   Enter to edit custom answer",
           ),
         );
@@ -269,6 +272,7 @@ export class InterviewPanel implements Focusable {
       return this.toggleOption(q, q.options[this.selectedRow]);
     if (q.allowCustom && this.selectedRow === q.options.length) {
       this.typingCustom = true;
+      this.customCursor.set(q.id, (this.custom.get(q.id) ?? "").length);
       return;
     }
     if (this.selectedRow === this.rowCount(q) - 2) {
@@ -317,6 +321,11 @@ export class InterviewPanel implements Focusable {
     if (this.selectedRow >= this.question.options.length) return;
     this.noteTarget = this.question.options[this.selectedRow];
     this.typingNotes = true;
+    this.setNoteCursor(
+      this.question,
+      this.noteTarget.value,
+      this.noteFor(this.question, this.noteTarget.value).length,
+    );
   }
 
   /** Handle text editing keys while the custom answer editor is active. */
@@ -327,11 +336,23 @@ export class InterviewPanel implements Focusable {
       this.typingCustom = false;
       if (q.type === "single") this.selectedFor(q).clear();
       this.next();
+    } else if (matchesKey(data, "left")) {
+      this.customCursor.set(q.id, Math.max(0, this.customCursorFor(q) - 1));
+    } else if (matchesKey(data, "right")) {
+      const value = this.custom.get(q.id) ?? "";
+      this.customCursor.set(q.id, Math.min(value.length, this.customCursorFor(q) + 1));
     } else if (matchesKey(data, "backspace")) {
       const value = this.custom.get(q.id) ?? "";
-      this.custom.set(q.id, value.slice(0, -1));
+      const cursor = this.customCursorFor(q);
+      if (cursor > 0) {
+        this.custom.set(q.id, `${value.slice(0, cursor - 1)}${value.slice(cursor)}`);
+        this.customCursor.set(q.id, cursor - 1);
+      }
     } else if (data.length === 1 && data >= " ") {
-      this.custom.set(q.id, `${this.custom.get(q.id) ?? ""}${data}`);
+      const value = this.custom.get(q.id) ?? "";
+      const cursor = this.customCursorFor(q);
+      this.custom.set(q.id, `${value.slice(0, cursor)}${data}${value.slice(cursor)}`);
+      this.customCursor.set(q.id, cursor + data.length);
     } else return;
     this.tui.requestRender();
   }
@@ -348,11 +369,27 @@ export class InterviewPanel implements Focusable {
     if (matchesKey(data, "escape")) this.typingNotes = false;
     else if (matchesKey(data, "return")) {
       this.typingNotes = false;
+    } else if (matchesKey(data, "left")) {
+      this.setNoteCursor(q, target.value, Math.max(0, this.noteCursorFor(q, target.value) - 1));
+    } else if (matchesKey(data, "right")) {
+      const value = this.noteFor(q, target.value);
+      this.setNoteCursor(
+        q,
+        target.value,
+        Math.min(value.length, this.noteCursorFor(q, target.value) + 1),
+      );
     } else if (matchesKey(data, "backspace")) {
       const value = this.noteFor(q, target.value);
-      this.setNote(q, target.value, value.slice(0, -1));
+      const cursor = this.noteCursorFor(q, target.value);
+      if (cursor > 0) {
+        this.setNote(q, target.value, `${value.slice(0, cursor - 1)}${value.slice(cursor)}`);
+        this.setNoteCursor(q, target.value, cursor - 1);
+      }
     } else if (data.length === 1 && data >= " ") {
-      this.setNote(q, target.value, `${this.noteFor(q, target.value)}${data}`);
+      const value = this.noteFor(q, target.value);
+      const cursor = this.noteCursorFor(q, target.value);
+      this.setNote(q, target.value, `${value.slice(0, cursor)}${data}${value.slice(cursor)}`);
+      this.setNoteCursor(q, target.value, cursor + data.length);
     } else return;
     this.tui.requestRender();
   }
@@ -409,15 +446,20 @@ export class InterviewPanel implements Focusable {
   ): string[] {
     const editing = this.typingNotes && this.noteTarget?.value === option.value;
     const value = this.noteFor(question, option.value);
-    const cursor = editing ? "█" : "";
-    const lines = wrapCustomAnswer("   notes", `${value}${cursor}`, width)
+    const lines = wrapCustomAnswer(
+      "   notes",
+      editing ? this.valueWithCursor(value, this.noteCursorFor(question, option.value)) : value,
+      width,
+    )
       .filter(() => value || editing)
       .map((line) => this.formatOptionLine(line, width, active, false, true));
     if (active)
       lines.push(
         this.theme.fg(
           "dim",
-          editing ? "   Type notes · Enter save · Esc stop editing" : "   n to edit notes",
+          editing
+            ? "   Type notes · ←/→ move cursor · Enter save · Esc stop editing"
+            : "   n to edit notes",
         ),
       );
     return lines;
@@ -432,9 +474,38 @@ export class InterviewPanel implements Focusable {
     return entries.length > 0 ? Object.fromEntries(entries) : undefined;
   }
 
+  /** Render a block cursor at the editable text cursor position. */
+  private valueWithCursor(value: string, cursor: number): string {
+    const safeCursor = Math.max(0, Math.min(value.length, cursor));
+    return `${value.slice(0, safeCursor)}█${value.slice(safeCursor)}`;
+  }
+
+  /** Return the custom-answer cursor for one question. */
+  private customCursorFor(question: Question): number {
+    const value = this.custom.get(question.id) ?? "";
+    return Math.max(0, Math.min(value.length, this.customCursor.get(question.id) ?? value.length));
+  }
+
   /** Return one option's notes, if any. */
   private noteFor(question: Question, value: string): string {
     return this.notes.get(question.id)?.get(value) ?? "";
+  }
+
+  /** Return the notes cursor for one option. */
+  private noteCursorFor(question: Question, value: string): number {
+    const note = this.noteFor(question, value);
+    const cursor = this.notesCursor.get(question.id)?.get(value) ?? note.length;
+    return Math.max(0, Math.min(note.length, cursor));
+  }
+
+  /** Set the notes cursor for one option. */
+  private setNoteCursor(question: Question, value: string, cursor: number): void {
+    let questionCursors = this.notesCursor.get(question.id);
+    if (!questionCursors) {
+      questionCursors = new Map();
+      this.notesCursor.set(question.id, questionCursors);
+    }
+    questionCursors.set(value, cursor);
   }
 
   /** Set or remove one option's notes. */

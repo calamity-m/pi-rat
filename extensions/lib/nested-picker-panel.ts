@@ -6,6 +6,7 @@ import {
   matchesKey,
   truncateToWidth,
   visibleWidth,
+  wrapTextWithAnsi,
   type Component,
   type Focusable,
 } from "@earendil-works/pi-tui";
@@ -118,6 +119,8 @@ export class NestedPickerPanel<TValue = unknown> extends Container implements Fo
   private path: NestedPickerRow<TValue>[] = [];
   private activeLeaf: NestedPickerRow<TValue> | undefined;
   private activeContent: NestedPickerContent | undefined;
+  private leafScrollOffset = 0;
+  private lastLeafLineCount = 0;
   private focusedValue = false;
   private lastRenderWidth = 80;
 
@@ -152,7 +155,9 @@ export class NestedPickerPanel<TValue = unknown> extends Container implements Fo
 
     if (this.activeLeaf) {
       lines.push(...this.contentLines(width));
-      lines.push(this.options.theme.fg("dim", "←/backspace parent • esc root/cancel"));
+      lines.push(
+        this.options.theme.fg("dim", "↑↓/j/k scroll • ←/backspace parent • esc root/cancel"),
+      );
     } else {
       this.syncInputToLevel();
       if (this.input) lines.push(...this.input.render(Math.max(1, width)));
@@ -176,16 +181,26 @@ export class NestedPickerPanel<TValue = unknown> extends Container implements Fo
       return;
     }
 
-    if (this.isParentKey(data)) {
-      this.goParent();
-      return;
-    }
-
     if (this.activeLeaf) {
+      if (this.isParentKey(data)) {
+        this.goParent();
+        return;
+      }
+      if (!isComponent(this.activeContent) && this.handleLeafScrollInput(data)) return;
       if (isComponent(this.activeContent) && this.activeContent.handleInput) {
         this.activeContent.handleInput(data);
         this.options.requestRender();
       }
+      return;
+    }
+
+    if (this.shouldUseInputForEditorKey(data)) {
+      this.handleSearchInput(data, true);
+      return;
+    }
+
+    if (this.isParentKey(data)) {
+      this.goParent();
       return;
     }
 
@@ -202,17 +217,7 @@ export class NestedPickerPanel<TValue = unknown> extends Container implements Fo
       return;
     }
 
-    if (!this.input) return;
-    const before = this.input.getValue();
-    this.input.handleInput(data);
-    const after = this.input.getValue();
-    if (after !== before) {
-      const state = this.currentLevelState();
-      state.query = after;
-      state.selectedIndex = 0;
-      state.scrollOffset = 0;
-      this.options.requestRender();
-    }
+    this.handleSearchInput(data, false);
   }
 
   /** Replace root rows and reconcile the current breadcrumb by stable row id. */
@@ -281,7 +286,12 @@ export class NestedPickerPanel<TValue = unknown> extends Container implements Fo
       return content.render(width).map((line) => truncateToWidth(line, width, ""));
     }
     const lines = typeof content === "string" ? content.replace(/\n$/, "").split("\n") : content;
-    return [...lines].map((line) => truncateToWidth(line, width, ""));
+    const rendered = [...lines].flatMap((line) =>
+      wrapTextWithAnsi(line, Math.max(1, width)).map((wrapped) => truncateToWidth(wrapped, width, "")),
+    );
+    this.lastLeafLineCount = rendered.length;
+    this.leafScrollOffset = this.clampedLeafScroll(this.leafScrollOffset);
+    return rendered.slice(this.leafScrollOffset, this.leafScrollOffset + this.visibleRows());
   }
 
   private ensureActiveContent(width: number): NestedPickerContent {
@@ -316,6 +326,7 @@ export class NestedPickerPanel<TValue = unknown> extends Container implements Fo
       this.path = [...this.path, selected];
       this.activeLeaf = undefined;
       this.activeContent = undefined;
+      this.leafScrollOffset = 0;
       this.levelState(this.path);
       this.syncInputToLevel();
       this.applyFocus();
@@ -348,6 +359,7 @@ export class NestedPickerPanel<TValue = unknown> extends Container implements Fo
     if (this.activeLeaf) {
       this.activeLeaf = undefined;
       this.activeContent = undefined;
+      this.leafScrollOffset = 0;
       this.syncInputToLevel();
       this.applyFocus();
       this.options.requestRender();
@@ -365,6 +377,7 @@ export class NestedPickerPanel<TValue = unknown> extends Container implements Fo
     this.path = [];
     this.activeLeaf = undefined;
     this.activeContent = undefined;
+    this.leafScrollOffset = 0;
     this.syncInputToLevel();
     this.applyFocus();
     this.options.requestRender();
@@ -376,6 +389,71 @@ export class NestedPickerPanel<TValue = unknown> extends Container implements Fo
 
   private isParentKey(data: string): boolean {
     return matchesKey(data, Key.left) || matchesKey(data, Key.backspace);
+  }
+
+  private shouldUseInputForEditorKey(data: string): boolean {
+    if (!this.input || !this.input.getValue()) return false;
+    return (
+      matchesKey(data, Key.left) ||
+      matchesKey(data, Key.right) ||
+      matchesKey(data, Key.backspace)
+    );
+  }
+
+  private handleSearchInput(data: string, forceRender: boolean): void {
+    if (!this.input) return;
+    const before = this.input.getValue();
+    this.input.handleInput(data);
+    const after = this.input.getValue();
+    if (after !== before) {
+      const state = this.currentLevelState();
+      state.query = after;
+      state.selectedIndex = 0;
+      state.scrollOffset = 0;
+      this.options.requestRender();
+    } else if (forceRender) {
+      this.options.requestRender();
+    }
+  }
+
+  private handleLeafScrollInput(data: string): boolean {
+    if (
+      this.options.keybindings.matches(data, "tui.select.up") ||
+      matchesKey(data, Key.up) ||
+      data === "k"
+    ) {
+      this.scrollLeafBy(-1);
+      return true;
+    }
+    if (
+      this.options.keybindings.matches(data, "tui.select.down") ||
+      matchesKey(data, Key.down) ||
+      data === "j"
+    ) {
+      this.scrollLeafBy(1);
+      return true;
+    }
+    if (matchesKey(data, Key.pageUp)) {
+      this.scrollLeafBy(-this.visibleRows());
+      return true;
+    }
+    if (matchesKey(data, Key.pageDown)) {
+      this.scrollLeafBy(this.visibleRows());
+      return true;
+    }
+    return false;
+  }
+
+  private scrollLeafBy(delta: number): void {
+    const next = this.clampedLeafScroll(this.leafScrollOffset + delta);
+    if (next === this.leafScrollOffset) return;
+    this.leafScrollOffset = next;
+    this.options.requestRender();
+  }
+
+  private clampedLeafScroll(offset: number): number {
+    const maxScroll = Math.max(0, this.lastLeafLineCount - this.visibleRows());
+    return Math.max(0, Math.min(maxScroll, offset));
   }
 
   private filteredRows(): readonly NestedPickerRow<TValue>[] {
@@ -439,6 +517,7 @@ export class NestedPickerPanel<TValue = unknown> extends Container implements Fo
       else {
         this.activeLeaf = undefined;
         this.activeContent = undefined;
+        this.leafScrollOffset = 0;
       }
     }
     this.syncInputToLevel();
