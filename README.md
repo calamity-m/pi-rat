@@ -102,3 +102,9 @@ Selecting Tokens lists local usage by provider/model across the current project'
 Selecting Global Tokens lists usage by provider/model across all Pi sessions under `~/.pi/agent/sessions/`; selecting a provider/model shows 30-day and all-time totals.
 
 ChatGPT Codex usage uses Pi's existing ChatGPT OAuth credential from `/login`; a normal `OPENAI_API_KEY` is not enough. The data comes from `https://chatgpt.com/backend-api/wham/usage`.
+
+## Instance labels
+
+The bundled footer extension uses Pi's session name (`pi --name ...` or `/name`) as an instance label. The label appears beside the prompt state (`● ready · label`) and in the terminal/window title.
+
+Use `/label <name>` to set the label from inside Pi, `/label` to show the current label, and `/label --clear` to clear it.

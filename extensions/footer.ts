@@ -1,7 +1,10 @@
+import path from "node:path";
+
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import {
   CustomEditor,
   type ExtensionAPI,
+  type ExtensionCommandContext,
   type ExtensionContext,
   type KeybindingsManager,
 } from "@earendil-works/pi-coding-agent";
@@ -11,6 +14,7 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 const ANSI_ESCAPE_PATTERN = /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\))/g;
+const CONTROL_CHARACTER_PATTERN = /[\x00-\x1F\x7F-\x9F]/g;
 
 function fitBorder(
   left: string,
@@ -65,6 +69,24 @@ function formatCwd(cwd: string): string {
   return home && cwd.startsWith(home) ? `~${cwd.slice(home.length)}` : cwd;
 }
 
+function sanitizeLabel(label: string | undefined): string | undefined {
+  const sanitized = label
+    ?.replace(ANSI_ESCAPE_PATTERN, "")
+    .replace(CONTROL_CHARACTER_PATTERN, " ")
+    .trim();
+  return sanitized && sanitized.length > 0 ? sanitized : undefined;
+}
+
+function terminalTitle(cwd: string, label: string | undefined): string {
+  const cwdName = path.basename(cwd) || cwd;
+  return label ? `π - ${label} - ${cwdName}` : `π - ${cwdName}`;
+}
+
+function updateInstanceTitle(ctx: ExtensionContext, label: string | undefined): void {
+  if (!ctx.hasUI) return;
+  ctx.ui.setTitle(terminalTitle(ctx.cwd, label));
+}
+
 function formatContext(ctx: ExtensionContext): string {
   const usage = ctx.getContextUsage();
   const contextWindow = usage?.contextWindow ?? ctx.model?.contextWindow;
@@ -106,6 +128,13 @@ export default function footer(pi: ExtensionAPI) {
 
   const requestRender = () => activeTui?.requestRender();
 
+  const currentLabel = () => sanitizeLabel(pi.getSessionName());
+
+  const refreshInstanceIdentity = (ctx: ExtensionContext) => {
+    updateInstanceTitle(ctx, currentLabel());
+    requestRender();
+  };
+
   const refreshBranch = async (ctx: ExtensionContext) => {
     const result = await pi
       .exec("git", ["branch", "--show-current"], { cwd: ctx.cwd })
@@ -116,6 +145,7 @@ export default function footer(pi: ExtensionAPI) {
   };
 
   pi.on("session_start", (_event, ctx) => {
+    refreshInstanceIdentity(ctx);
     if (ctx.mode !== "tui") return;
 
     ctx.ui.setWorkingVisible(false);
@@ -136,9 +166,13 @@ export default function footer(pi: ExtensionAPI) {
         const theme = ctx.ui.theme;
         const model = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "no model";
         const thinking = pi.getThinkingLevel();
-        const topLeft = isWorking
-          ? theme.fg("accent", ` ${spinnerFrames[spinnerIndex]} working `)
-          : theme.fg("success", " ● ready ");
+        const label = currentLabel();
+        const stateText = isWorking
+          ? theme.fg("accent", ` ${spinnerFrames[spinnerIndex]} working`)
+          : theme.fg("success", " ● ready");
+        const topLeft = label
+          ? `${stateText}${theme.fg("dim", " · ")}${theme.fg("muted", label)} `
+          : `${stateText} `;
         const topRight = theme.fg("muted", ` ${branchLabel(branch)} `);
         const bottomLeft = theme.fg("muted", ` ${model} · thinking ${thinking} `);
         const bottomRight = theme.fg("muted", ` ${formatContext(ctx)} · ${formatCwd(ctx.cwd)} `);
@@ -176,6 +210,10 @@ export default function footer(pi: ExtensionAPI) {
     requestRender();
   });
 
+  pi.on("session_info_changed", (_event, ctx) => {
+    refreshInstanceIdentity(ctx);
+  });
+
   pi.on("model_select", (event, ctx) => {
     ctx.ui.setStatus("model", `🤖 ${event.model.id}`);
     requestRender();
@@ -209,6 +247,29 @@ export default function footer(pi: ExtensionAPI) {
   pi.on("session_shutdown", () => {
     stopSpinner();
     activeTui = undefined;
+  });
+
+  pi.registerCommand("label", {
+    description: "Set or show this Pi instance label, backed by the session name",
+    handler: async (args, ctx: ExtensionCommandContext) => {
+      const label = sanitizeLabel(args);
+      if (!label) {
+        const existing = currentLabel();
+        ctx.ui.notify(existing ? `Label: ${existing}` : "No label set", "info");
+        return;
+      }
+
+      if (label === "--clear") {
+        pi.setSessionName("");
+        refreshInstanceIdentity(ctx);
+        ctx.ui.notify("Label cleared", "info");
+        return;
+      }
+
+      pi.setSessionName(label);
+      refreshInstanceIdentity(ctx);
+      ctx.ui.notify(`Label: ${label}`, "info");
+    },
   });
 
   pi.registerCommand("footer-reset", {
