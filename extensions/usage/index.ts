@@ -1,3 +1,7 @@
+import { readdir, readFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join, relative } from "node:path";
+
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
 
@@ -7,21 +11,29 @@ import {
   type NestedPickerRow,
 } from "../lib/nested-picker-panel.ts";
 import {
+  aggregateTokenUsage,
+  buildTokenUsageDetails,
   buildUsageDetails,
   CHATGPT_BASE_URL,
   getTokenMetadata,
   isOpenAICodexProvider,
   parseUsageSnapshot,
+  type TokenUsageReport,
+  type TokenUsageSessionText,
   type UsageSnapshot,
 } from "./helpers.ts";
 
 const USAGE_FETCH_TIMEOUT_MS = 15_000;
 
 interface UsageRowValue {
-  kind: "category" | "chatgpt-codex";
+  kind: "category" | "chatgpt-codex" | "token-provider-model" | "tokens-empty" | "tokens-error";
+  providerModel?: string;
+  tokenReport?: TokenUsageReport;
+  sessionDir?: string;
+  error?: string;
 }
 
-const usageRows: readonly NestedPickerRow<UsageRowValue>[] = [
+const subscriptionUsageRows: readonly NestedPickerRow<UsageRowValue>[] = [
   {
     id: "subscription-usage",
     label: "Subscription usage",
@@ -54,18 +66,40 @@ export default function usageExtension(pi: ExtensionAPI): void {
 }
 
 async function showUsagePicker(ctx: ExtensionCommandContext): Promise<void> {
+  const rows = await buildUsageRows(ctx);
+
   await ctx.ui.custom<void>((tui, theme, keybindings, done) => {
     return new NestedPickerPanel<UsageRowValue>({
       title: "usage",
-      rows: usageRows,
+      rows,
       visibleRows: 6,
       theme,
       keybindings,
       requestRender: () => tui.requestRender(),
       onCancel: () => done(),
       renderContent: ({ row }) => {
-        if (row.value?.kind !== "chatgpt-codex") return ["No usage provider selected."];
-        return new UsageDetailsContent(ctx, theme, () => tui.requestRender());
+        if (row.value?.kind === "chatgpt-codex") {
+          return new UsageDetailsContent(ctx, theme, () => tui.requestRender());
+        }
+        if (row.value?.kind === "token-provider-model") {
+          return buildTokenUsageDetails(
+            row.value.tokenReport!,
+            row.value.sessionDir,
+            row.value.providerModel,
+          );
+        }
+        if (row.value?.kind === "tokens-empty") {
+          return buildTokenUsageDetails(row.value.tokenReport!, row.value.sessionDir);
+        }
+        if (row.value?.kind === "tokens-error") {
+          return [
+            theme.fg("warning", "Could not load local token usage."),
+            row.value.error ?? "Unknown error",
+            "",
+            "Token usage is read from local Pi session JSONL files.",
+          ];
+        }
+        return ["Select a usage report."];
       },
     });
   });
@@ -112,6 +146,120 @@ class UsageDetailsContent implements Component {
       ];
     } finally {
       this.requestRender();
+    }
+  }
+}
+
+async function buildUsageRows(
+  ctx: ExtensionCommandContext,
+): Promise<readonly NestedPickerRow<UsageRowValue>[]> {
+  return [
+    ...subscriptionUsageRows,
+    {
+      id: "tokens",
+      label: "Tokens",
+      description: "Current project token usage by provider/model",
+      value: { kind: "category" },
+      children: await buildTokenProviderModelRows(ctx.sessionManager.getSessionDir(), {
+        emptyDescription: "No assistant usage in current project sessions",
+        recursive: false,
+      }),
+    },
+    {
+      id: "global-tokens",
+      label: "Global Tokens",
+      description: "All Pi session token usage by provider/model",
+      value: { kind: "category" },
+      children: await buildTokenProviderModelRows(join(homedir(), ".pi", "agent", "sessions"), {
+        emptyDescription: "No assistant usage in global Pi sessions",
+        recursive: true,
+      }),
+    },
+  ];
+}
+
+async function buildTokenProviderModelRows(
+  sessionDir: string,
+  options: { emptyDescription: string; recursive: boolean },
+): Promise<readonly NestedPickerRow<UsageRowValue>[]> {
+  try {
+    const report = aggregateTokenUsage(await readSessionTexts(sessionDir, options.recursive));
+    if (report.providerModels.length === 0) {
+      return [
+        {
+          id: "tokens-empty",
+          label: "No token usage found",
+          description: options.emptyDescription,
+          value: { kind: "tokens-empty", tokenReport: report, sessionDir },
+        },
+      ];
+    }
+
+    return report.providerModels.map((entry) => ({
+      id: `token-${rowId(entry.providerModel)}`,
+      label: entry.providerModel,
+      description: `${entry.allTime.total} all-time tokens, ${entry.last30d.total} in 30d`,
+      value: {
+        kind: "token-provider-model",
+        providerModel: entry.providerModel,
+        tokenReport: report,
+        sessionDir,
+      },
+    }));
+  } catch (error) {
+    return [
+      {
+        id: "tokens-error",
+        label: "Could not load token usage",
+        description: usageErrorMessage(error),
+        value: { kind: "tokens-error", error: usageErrorMessage(error) },
+      },
+    ];
+  }
+}
+
+function rowId(value: string): string {
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "unknown"
+  );
+}
+
+async function readSessionTexts(
+  sessionDir: string,
+  recursive = false,
+): Promise<TokenUsageSessionText[]> {
+  const sessions: TokenUsageSessionText[] = [];
+  await collectSessionTexts(sessionDir, sessionDir, recursive, sessions);
+  return sessions;
+}
+
+async function collectSessionTexts(
+  rootDir: string,
+  currentDir: string,
+  recursive: boolean,
+  sessions: TokenUsageSessionText[],
+): Promise<void> {
+  const entries = await readdir(currentDir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const path = join(currentDir, entry.name);
+    if (entry.isDirectory()) {
+      if (recursive) await collectSessionTexts(rootDir, path, recursive, sessions);
+      continue;
+    }
+
+    if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
+
+    try {
+      sessions.push({
+        sessionId: relative(rootDir, path) || entry.name,
+        content: await readFile(path, "utf8"),
+      });
+    } catch {
+      // Session files can be moved or rewritten while the report loads; skip races.
     }
   }
 }
@@ -169,7 +317,10 @@ async function fetchChatGPTCodexUsage(ctx: ExtensionCommandContext): Promise<Usa
   }
 }
 
-function timeoutSignal(timeoutMs: number, parent?: AbortSignal): { signal: AbortSignal; cleanup: () => void } {
+function timeoutSignal(
+  timeoutMs: number,
+  parent?: AbortSignal,
+): { signal: AbortSignal; cleanup: () => void } {
   const controller = new AbortController();
   const abort = () => controller.abort();
   const timer = setTimeout(abort, timeoutMs);

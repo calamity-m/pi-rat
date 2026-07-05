@@ -31,6 +31,30 @@ function jwt(payload) {
   return `${encode({ alg: "none" })}.${encode(payload)}.`;
 }
 
+function assistantEntry({ provider = "openai-codex", model = "gpt-5", timestamp, usage }) {
+  return JSON.stringify({
+    type: "message",
+    id: "entry",
+    parentId: null,
+    timestamp: new Date(timestamp).toISOString(),
+    message: {
+      role: "assistant",
+      provider,
+      model,
+      timestamp,
+      usage: {
+        input: 100,
+        output: 50,
+        cacheRead: 10,
+        cacheWrite: 5,
+        totalTokens: 165,
+        cost: { total: 0.123 },
+        ...usage,
+      },
+    },
+  });
+}
+
 describe("usage helpers", () => {
   test("matches only openai-codex provider names", () => {
     assert.equal(helpers.isOpenAICodexProvider("openai-codex"), true);
@@ -93,15 +117,128 @@ describe("usage helpers", () => {
   });
 
   test("formats missing fields clearly", () => {
-    const lines = helpers.buildUsageDetails(
-      { fetchedAt: 1_700_000_000_000 },
-      "openai-codex",
-    );
+    const lines = helpers.buildUsageDetails({ fetchedAt: 1_700_000_000_000 }, "openai-codex");
 
     assert.match(lines.join("\n"), /plan: unknown/);
     assert.match(lines.join("\n"), /email: unknown/);
     assert.match(lines.join("\n"), /5-hour: unknown/);
     assert.match(lines.join("\n"), /weekly: unknown/);
     assert.match(lines.join("\n"), /endpoint: https:\/\/chatgpt\.com\/backend-api\/wham\/usage/);
+  });
+
+  test("aggregates token usage by provider and model", () => {
+    const now = Date.parse("2026-07-05T00:00:00Z");
+    const report = helpers.aggregateTokenUsage(
+      [
+        {
+          sessionId: "one.jsonl",
+          content: [
+            assistantEntry({
+              timestamp: now - 1_000,
+              usage: { input: 20, output: 30, totalTokens: 50 },
+            }),
+            assistantEntry({
+              provider: "anthropic",
+              model: "claude",
+              timestamp: now - 2_000,
+              usage: { input: 40, output: 60, totalTokens: 100 },
+            }),
+          ].join("\n"),
+        },
+        {
+          sessionId: "two.jsonl",
+          content: assistantEntry({
+            timestamp: now - 3_000,
+            usage: { input: 5, output: 10, totalTokens: 15 },
+          }),
+        },
+      ],
+      now,
+    );
+
+    assert.equal(report.sessionFiles, 2);
+    assert.equal(report.providerModels.length, 2);
+    const codex = report.providerModels.find(
+      (entry) => entry.providerModel === "openai-codex/gpt-5",
+    );
+    assert.equal(codex.allTime.input, 25);
+    assert.equal(codex.allTime.output, 40);
+    assert.equal(codex.allTime.total, 65);
+    assert.equal(codex.allTime.responses, 2);
+    assert.equal(codex.allTime.sessions, 2);
+  });
+
+  test("separates 30d token usage from all-time totals", () => {
+    const now = Date.parse("2026-07-05T00:00:00Z");
+    const old = now - 31 * 24 * 60 * 60 * 1000;
+    const recent = now - 29 * 24 * 60 * 60 * 1000;
+    const report = helpers.aggregateTokenUsage(
+      [
+        {
+          sessionId: "one.jsonl",
+          content: [
+            assistantEntry({
+              timestamp: old,
+              usage: { input: 1000, output: 1, totalTokens: 1001 },
+            }),
+            assistantEntry({ timestamp: recent, usage: { input: 10, output: 2, totalTokens: 12 } }),
+          ].join("\n"),
+        },
+      ],
+      now,
+    );
+
+    const providerModel = report.providerModels[0];
+    assert.equal(providerModel.allTime.total, 1013);
+    assert.equal(providerModel.last30d.total, 12);
+    assert.equal(providerModel.last30d.responses, 1);
+  });
+
+  test("skips malformed and non-assistant session entries", () => {
+    const now = Date.parse("2026-07-05T00:00:00Z");
+    const report = helpers.aggregateTokenUsage(
+      [
+        {
+          sessionId: "one.jsonl",
+          content: [
+            "not json",
+            JSON.stringify({ type: "session", id: "header" }),
+            JSON.stringify({ type: "message", message: { role: "user", content: "hi" } }),
+            JSON.stringify({
+              type: "message",
+              message: { role: "assistant", provider: "x", model: "y" },
+            }),
+            assistantEntry({ timestamp: now, usage: { input: 1, output: 2, totalTokens: 3 } }),
+          ].join("\n"),
+        },
+      ],
+      now,
+    );
+
+    assert.equal(report.providerModels.length, 1);
+    assert.equal(report.providerModels[0].allTime.total, 3);
+  });
+
+  test("formats token usage with 30d and all-time lines", () => {
+    const report = helpers.aggregateTokenUsage(
+      [
+        {
+          sessionId: "one.jsonl",
+          content: assistantEntry({
+            timestamp: 1_700_000_000_000,
+            usage: { input: 1000, output: 2000, totalTokens: 3000 },
+          }),
+        },
+      ],
+      1_700_000_000_000,
+    );
+
+    const lines = helpers.buildTokenUsageDetails(report, "/sessions").join("\n");
+    assert.match(lines, /Token usage by provider\/model/);
+    assert.match(lines, /window: last 30d \+ all-time/);
+    assert.match(lines, /source: \/sessions/);
+    assert.match(lines, /openai-codex\/gpt-5/);
+    assert.match(lines, /30d:/);
+    assert.match(lines, /all:/);
   });
 });
