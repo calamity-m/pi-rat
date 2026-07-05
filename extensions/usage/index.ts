@@ -9,6 +9,7 @@ import {
   type NestedPickerPanelTheme,
   type NestedPickerRow,
 } from "../lib/nested-picker-panel.ts";
+import { currentThinkingBorderColor } from "../lib/thinking-border.ts";
 import {
   buildUsageDetails,
   CHATGPT_BASE_URL,
@@ -77,6 +78,7 @@ async function showUsagePicker(ctx: ExtensionCommandContext): Promise<void> {
       theme,
       keybindings,
       requestRender: () => tui.requestRender(),
+      borderColor: currentThinkingBorderColor(ctx, theme),
       onCancel: () => done(),
       renderContent: ({ row }) => {
         if (row.value?.kind === "chatgpt-codex") {

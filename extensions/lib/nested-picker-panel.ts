@@ -21,6 +21,9 @@ export interface NestedPickerPanelTheme {
   fg(color: string, text: string): string;
 }
 
+/** Color function for nested picker panel frame lines. */
+export type NestedPickerBorderColor = (text: string) => string;
+
 /** Content shown after a terminal row is confirmed. */
 export type NestedPickerContent = string | readonly string[] | Component;
 
@@ -89,6 +92,8 @@ export interface NestedPickerPanelOptions<TValue = unknown> {
   keybindings: PanelKeybindings;
   /** Request a TUI render after state changes. */
   requestRender: () => void;
+  /** Optional frame color. Defaults to the prompt border-muted color. */
+  borderColor?: NestedPickerBorderColor;
   /** Build content for a terminal row after Enter is pressed. */
   renderContent: (context: NestedPickerContentContext<TValue>) => NestedPickerContent;
   /** Optional search implementation. Defaults to case-insensitive label/description matching. */
@@ -127,7 +132,7 @@ export class NestedPickerPanel<TValue = unknown> extends Container implements Fo
   /** Create a nested picker panel with optional per-level search. */
   constructor(private readonly options: NestedPickerPanelOptions<TValue>) {
     super();
-    this.chrome = new NestedPickerChrome(options.theme);
+    this.chrome = new NestedPickerChrome(options.theme, options.borderColor);
     if (options.enableSearch) {
       this.input = new Input();
       this.addChild(this.input);
@@ -575,20 +580,35 @@ function isComponent(value: NestedPickerContent | undefined): value is Component
 }
 
 class NestedPickerChrome {
-  constructor(private readonly theme: NestedPickerPanelTheme) {}
+  private readonly borderColor: NestedPickerBorderColor;
+
+  constructor(
+    private readonly theme: NestedPickerPanelTheme,
+    borderColor?: NestedPickerBorderColor,
+  ) {
+    this.borderColor = borderColor ?? ((text) => this.theme.fg("borderMuted", text));
+  }
 
   render(title: string, width: number, lines: string[]): string[] {
     if (width < 1) return [""];
     return [
-      this.horizontalRule(width),
-      this.frameLine(this.theme.fg("accent", title), width),
+      this.topRule(title, width),
       ...lines.map((line) => this.frameLine(line, width)),
       this.horizontalRule(width),
     ];
   }
 
+  private topRule(title: string, width: number): string {
+    const titleWidth = visibleWidth(title);
+    if (titleWidth + 4 > width) return this.horizontalRule(width);
+
+    const prefix = "── ";
+    const raw = `${prefix}${title} `;
+    return this.borderColor(`${raw}${"─".repeat(Math.max(0, width - visibleWidth(raw)))}`);
+  }
+
   private horizontalRule(width: number): string {
-    return this.theme.fg("border", "─".repeat(Math.max(0, width)));
+    return this.borderColor("─".repeat(Math.max(0, width)));
   }
 
   private frameLine(text: string, width: number): string {

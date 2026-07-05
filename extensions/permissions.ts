@@ -179,6 +179,7 @@ async function showPermissionsPicker(
   approvals: readonly SessionApproval[],
 ): Promise<void> {
   const { NestedPickerPanel } = await import("./lib/nested-picker-panel.ts");
+  const { currentThinkingBorderColor } = await import("./lib/thinking-border.ts");
   const rows = buildPermissionsRows(policy, approvals);
 
   await ctx.ui.custom<void>((tui, theme, keybindings, done) => {
@@ -189,6 +190,7 @@ async function showPermissionsPicker(
       theme,
       keybindings,
       requestRender: () => tui.requestRender(),
+      borderColor: currentThinkingBorderColor(ctx, theme),
       onCancel: () => done(),
       renderContent: ({ row }) => renderPermissionsContent(row, policy, approvals, () => tui.requestRender()),
     });

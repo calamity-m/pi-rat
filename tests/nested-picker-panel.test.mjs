@@ -34,6 +34,19 @@ const theme = {
   },
 };
 
+const colorCodes = {
+  accent: "\x1b[35m",
+  borderMuted: "\x1b[2m",
+  dim: "\x1b[90m",
+  warning: "\x1b[33m",
+};
+const reset = "\x1b[0m";
+const coloredTheme = {
+  fg(color, text) {
+    return `${colorCodes[color] ?? "\x1b[37m"}${text}${reset}`;
+  },
+};
+
 const keybindings = {
   matches(data, id) {
     const keys = {
@@ -242,6 +255,40 @@ describe("NestedPickerPanel navigation and rendering", () => {
     const after = visibleText(picker, 24);
     assert.doesNotMatch(after, /alpha bravo/);
     assert.match(after, /india juliet/);
+  });
+
+  test("renders the title inside prompt-colored borders", () => {
+    const picker = panel({ theme: coloredTheme });
+    const lines = picker.render(24);
+
+    assert.ok(lines[0].startsWith(colorCodes.borderMuted), lines[0]);
+    assert.match(lines[0], /picker/);
+    assert.equal(visibleWidth(lines[0]), 24);
+    assert.ok(lines.at(-1).startsWith(colorCodes.borderMuted), lines.at(-1));
+    assert.equal(visibleWidth(lines.at(-1)), 24);
+  });
+
+  test("uses a caller-supplied border color for title and borders", () => {
+    const thinkingColor = "\x1b[34m";
+    const picker = panel({
+      borderColor: (text) => `${thinkingColor}${text}${reset}`,
+      theme: coloredTheme,
+    });
+    const lines = picker.render(24);
+
+    assert.ok(lines[0].startsWith(thinkingColor), lines[0]);
+    assert.match(lines[0], /picker/);
+    assert.ok(lines.at(-1).startsWith(thinkingColor), lines.at(-1));
+    assert.equal(visibleWidth(lines[0]), 24);
+  });
+
+  test("falls back to a plain prompt-colored top border when the title is too wide", () => {
+    const picker = panel({ theme: coloredTheme });
+    const lines = picker.render(9);
+
+    assert.ok(lines[0].startsWith(colorCodes.borderMuted), lines[0]);
+    assert.doesNotMatch(lines[0], /picker/);
+    assert.equal(visibleWidth(lines[0]), 9);
   });
 
   test("clips long row labels and content to the requested width", () => {

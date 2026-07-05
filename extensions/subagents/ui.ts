@@ -14,6 +14,7 @@ import {
   type NestedPickerRow,
 } from "../lib/nested-picker-panel.ts";
 import { OverlayPanel, rightOverlayOptions, type OverlayPanelTheme } from "../lib/overlay.ts";
+import { currentThinkingBorderColor } from "../lib/thinking-border.ts";
 import { formatCanonicalModelId, normalizeThinkingLevel } from "./model-resolution.ts";
 import type { PresetAgent } from "./preset-agents.ts";
 import { readSubagentSettings, writeSubagentTier } from "./settings.ts";
@@ -92,6 +93,7 @@ async function showDashboard(
       theme,
       keybindings,
       requestRender,
+      borderColor: currentThinkingBorderColor(ctx, theme),
       onCancel: () => done(),
       renderContent: ({ row }) => renderContent(ctx, theme, keybindings, requestRender, store, row),
     });
