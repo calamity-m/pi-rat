@@ -10,6 +10,8 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
+const ANSI_ESCAPE_PATTERN = /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\))/g;
+
 function fitBorder(
   left: string,
   right: string,
@@ -43,6 +45,19 @@ function fitBorder(
     width - fixedWidth - visibleWidth(leftText) - visibleWidth(rightText),
   );
   return `${border("─")}${leftText}${fill("─".repeat(gapWidth))}${rightText}${border("─")}`;
+}
+
+function findEditorBottomBorderIndex(lines: readonly string[], width: number): number {
+  for (let index = lines.length - 1; index >= 1; index--) {
+    if (isEditorBorderLine(lines[index] ?? "", width)) return index;
+  }
+  return Math.max(0, lines.length - 1);
+}
+
+function isEditorBorderLine(line: string, width: number): boolean {
+  const plain = line.replace(ANSI_ESCAPE_PATTERN, "");
+  if (visibleWidth(plain) !== width) return false;
+  return /^─+$/.test(plain) || /^─── [↑↓] \d+ more ─*$/.test(plain);
 }
 
 function formatCwd(cwd: string): string {
@@ -130,7 +145,12 @@ export default function footer(pi: ExtensionAPI) {
         const borderColor = (text: string) => this.borderColor(text);
 
         lines[0] = fitBorder(topLeft, topRight, width, borderColor);
-        lines[lines.length - 1] = fitBorder(bottomLeft, bottomRight, width, borderColor);
+        lines[findEditorBottomBorderIndex(lines, width)] = fitBorder(
+          bottomLeft,
+          bottomRight,
+          width,
+          borderColor,
+        );
         return lines;
       }
     }
