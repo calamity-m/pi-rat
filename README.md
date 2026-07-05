@@ -32,6 +32,29 @@ Run `/permissions` in TUI mode to browse:
 4. init
    - adds starter prompt rules for `bash` commands containing `docker`, `curl`, `kubectl`, or `python -c`, plus `.env` reads/edits, then tells you to run `/reload`
 
+## `/subagents`
+
+The bundled `subagents` extension adds a `spawn_subagent` tool for isolated, ephemeral Pi agents. Use it for investigation, review, or second opinions; it returns only the subagent's final answer to the parent session.
+
+`spawn_subagent` supports preset agents (`explorer`, `code-reviewer`, `oracle`), optional role/context/file preloading, and tool policies: `none`, `read-only` (default), or `coding`.
+
+Run `/subagents` in TUI mode to browse active/recent runs, open transcript overlays, cancel active runs, and configure fast/high tier mappings. In non-TUI modes it reports current run state with a notification when UI is available.
+
+Fast/high tiers are stored in `~/.pi/agent/settings.json` under `piRat.subagents`. Missing or unavailable tier mappings fall back to the parent session model; explicit raw `model` overrides remain strict.
+
+```json
+{
+  "piRat": {
+    "subagents": {
+      "tiers": {
+        "fast": { "model": "provider/model-id", "thinkingLevel": "minimal" },
+        "high": { "model": "provider/model-id", "thinkingLevel": "high" }
+      }
+    }
+  }
+}
+```
+
 ## `/usage`
 
 The bundled `usage` extension adds a `/usage` TUI picker:
