@@ -2,6 +2,30 @@
 
 lil rat
 
+## `autoformatter`
+
+The bundled `autoformatter` extension runs configured formatter commands after successful `write` or `edit` tool calls. Configure rules in `~/.pi/agent/settings.json` globally or `.pi/settings.json` per trusted project:
+
+```json
+{
+  "autoformatter": {
+    "formatters": [
+      {
+        "id": "oxfmt",
+        "languages": ["typescript", "javascript"],
+        "extensions": [".ts", ".tsx", ".js", ".jsx"],
+        "command": "npx",
+        "args": ["oxfmt", "{file}"],
+        "cwd": "project",
+        "timeoutMs": 10000
+      }
+    ]
+  }
+}
+```
+
+Project formatter rules override global rules by `languages`; language-less project rules override language-less global rules with the same `id`.
+
 ## `/permissions`
 
 The bundled `permissions` extension gates Pi tool calls from global user settings at `~/.pi/agent/settings.json`. It defaults to allowing tool calls unless the first matching rule says to prompt or deny.
