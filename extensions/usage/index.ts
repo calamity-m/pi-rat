@@ -18,6 +18,7 @@ import {
   parseUsageSnapshot,
   type UsageSnapshot,
 } from "./subscriptions/index.ts";
+import { buildSystemPromptSections } from "./system-prompt.ts";
 import {
   aggregateTokenUsage,
   buildTokenUsageDetails,
@@ -28,10 +29,17 @@ import {
 const USAGE_FETCH_TIMEOUT_MS = 15_000;
 
 interface UsageRowValue {
-  kind: "category" | "chatgpt-codex" | "token-provider-model" | "tokens-empty" | "tokens-error";
+  kind:
+    | "category"
+    | "chatgpt-codex"
+    | "system-prompt-section"
+    | "token-provider-model"
+    | "tokens-empty"
+    | "tokens-error";
   providerModel?: string;
   tokenReport?: TokenUsageReport;
   sessionDir?: string;
+  systemPromptLines?: string[];
   error?: string;
 }
 
@@ -74,7 +82,8 @@ async function showUsagePicker(ctx: ExtensionCommandContext): Promise<void> {
     return new NestedPickerPanel<UsageRowValue>({
       title: "usage",
       rows,
-      visibleRows: 6,
+      visibleRows: 8,
+      leafVisibleRows: 18,
       theme,
       keybindings,
       requestRender: () => tui.requestRender(),
@@ -83,6 +92,9 @@ async function showUsagePicker(ctx: ExtensionCommandContext): Promise<void> {
       renderContent: ({ row }) => {
         if (row.value?.kind === "chatgpt-codex") {
           return new UsageDetailsContent(ctx, theme, () => tui.requestRender());
+        }
+        if (row.value?.kind === "system-prompt-section") {
+          return row.value.systemPromptLines ?? ["No system prompt details available."];
         }
         if (row.value?.kind === "token-provider-model") {
           return buildTokenUsageDetails(
@@ -158,6 +170,7 @@ async function buildUsageRows(
 ): Promise<readonly NestedPickerRow<UsageRowValue>[]> {
   return [
     ...subscriptionUsageRows,
+    buildSystemPromptRow(ctx),
     {
       id: "tokens",
       label: "Tokens",
@@ -179,6 +192,22 @@ async function buildUsageRows(
       }),
     },
   ];
+}
+
+function buildSystemPromptRow(ctx: ExtensionCommandContext): NestedPickerRow<UsageRowValue> {
+  const sections = buildSystemPromptSections(ctx.getSystemPrompt(), ctx.getSystemPromptOptions());
+  return {
+    id: "system-prompt",
+    label: "System Prompt",
+    description: "Compiled prompt, tools, skills, and context files",
+    value: { kind: "category" },
+    children: sections.map((section) => ({
+      id: `system-prompt-${rowId(section.id)}`,
+      label: section.label,
+      description: section.description,
+      value: { kind: "system-prompt-section", systemPromptLines: section.lines },
+    })),
+  };
 }
 
 async function buildTokenProviderModelRows(

@@ -8,22 +8,28 @@ import ts from "typescript";
 const projectRoot = resolve(import.meta.dirname, "..");
 const compiledSubscriptionPath = join(projectRoot, ".usage-subscriptions.test.mjs");
 const compiledTokensPath = join(projectRoot, ".usage-tokens.test.mjs");
+const compiledSystemPromptPath = join(projectRoot, ".usage-system-prompt.test.mjs");
 let helpers;
 
 before(async () => {
   await compileUsageModule("extensions/usage/subscriptions/index.ts", compiledSubscriptionPath);
   await compileUsageModule("extensions/usage/tokens/index.ts", compiledTokensPath);
+  await compileUsageModule("extensions/usage/system-prompt.ts", compiledSystemPromptPath);
 
   const subscriptions = await import(
     `${pathToFileURL(compiledSubscriptionPath).href}?t=${Date.now()}`
   );
   const tokens = await import(`${pathToFileURL(compiledTokensPath).href}?t=${Date.now()}`);
-  helpers = { ...subscriptions, ...tokens };
+  const systemPrompt = await import(
+    `${pathToFileURL(compiledSystemPromptPath).href}?t=${Date.now()}`
+  );
+  helpers = { ...subscriptions, ...tokens, ...systemPrompt };
 });
 
 after(async () => {
   await rm(compiledSubscriptionPath, { force: true });
   await rm(compiledTokensPath, { force: true });
+  await rm(compiledSystemPromptPath, { force: true });
 });
 
 async function compileUsageModule(sourcePath, outputPath) {
@@ -229,6 +235,55 @@ describe("usage helpers", () => {
 
     assert.equal(report.providerModels.length, 1);
     assert.equal(report.providerModels[0].allTime.total, 3);
+  });
+
+  test("builds system prompt usage sections with token counts", () => {
+    const sections = helpers.buildSystemPromptSections("compiled prompt", {
+      cwd: projectRoot,
+      selectedTools: ["read", "write", "hidden"],
+      toolSnippets: {
+        read: "Read a file",
+        write: "Write a file",
+      },
+      skills: [
+        {
+          name: "visible-skill",
+          description: "Visible to the model",
+          filePath: "/skills/visible/SKILL.md",
+          baseDir: "/skills/visible",
+          sourceInfo: { scope: "user", source: "test" },
+          disableModelInvocation: false,
+        },
+        {
+          name: "user-only-skill",
+          description: "Hidden from the model",
+          filePath: "/skills/hidden/SKILL.md",
+          baseDir: "/skills/hidden",
+          sourceInfo: { scope: "user", source: "test" },
+          disableModelInvocation: true,
+        },
+      ],
+      contextFiles: [{ path: "/repo/AGENTS.md", content: "Project instructions" }],
+    });
+
+    const compiled = sections.find((section) => section.id === "compiled");
+    assert.equal(compiled.label, "Compiled System Prompt");
+    assert.match(compiled.description, /estimated tokens/);
+    assert.match(compiled.lines.join("\n"), /compiled prompt/);
+
+    const tools = sections.find((section) => section.id === "tools").lines.join("\n");
+    assert.match(tools, /read — \d+ tokens/);
+    assert.match(tools, /write — \d+ tokens/);
+    assert.doesNotMatch(tools, /hidden/);
+
+    const skills = sections.find((section) => section.id === "skills").lines.join("\n");
+    assert.match(skills, /visible-skill — \d+ tokens/);
+    assert.doesNotMatch(skills, /user-only-skill/);
+
+    const contextFiles = sections
+      .find((section) => section.id === "context-files")
+      .lines.join("\n");
+    assert.match(contextFiles, /\/repo\/AGENTS\.md — \d+ tokens/);
   });
 
   test("formats token usage with 30d and all-time lines", () => {

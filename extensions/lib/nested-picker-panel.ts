@@ -84,8 +84,10 @@ export interface NestedPickerPanelOptions<TValue = unknown> {
   rows: readonly NestedPickerRow<TValue>[];
   /** Whether to show a per-level search input above picker rows. */
   enableSearch?: boolean;
-  /** Maximum number of rows visible at one time. */
+  /** Maximum number of picker rows visible at one time. */
   visibleRows?: number;
+  /** Maximum number of wrapped text lines visible for non-component leaf content. Defaults to visibleRows. */
+  leafVisibleRows?: number;
   /** Theme from Pi's custom UI factory. */
   theme: NestedPickerPanelTheme;
   /** Keybindings from Pi's custom UI factory. */
@@ -296,7 +298,7 @@ export class NestedPickerPanel<TValue = unknown> extends Container implements Fo
     );
     this.lastLeafLineCount = rendered.length;
     this.leafScrollOffset = this.clampedLeafScroll(this.leafScrollOffset);
-    return rendered.slice(this.leafScrollOffset, this.leafScrollOffset + this.visibleRows());
+    return rendered.slice(this.leafScrollOffset, this.leafScrollOffset + this.leafVisibleRows());
   }
 
   private ensureActiveContent(width: number): NestedPickerContent {
@@ -439,11 +441,11 @@ export class NestedPickerPanel<TValue = unknown> extends Container implements Fo
       return true;
     }
     if (matchesKey(data, Key.pageUp)) {
-      this.scrollLeafBy(-this.visibleRows());
+      this.scrollLeafBy(-this.leafVisibleRows());
       return true;
     }
     if (matchesKey(data, Key.pageDown)) {
-      this.scrollLeafBy(this.visibleRows());
+      this.scrollLeafBy(this.leafVisibleRows());
       return true;
     }
     return false;
@@ -457,7 +459,7 @@ export class NestedPickerPanel<TValue = unknown> extends Container implements Fo
   }
 
   private clampedLeafScroll(offset: number): number {
-    const maxScroll = Math.max(0, this.lastLeafLineCount - this.visibleRows());
+    const maxScroll = Math.max(0, this.lastLeafLineCount - this.leafVisibleRows());
     return Math.max(0, Math.min(maxScroll, offset));
   }
 
@@ -504,6 +506,10 @@ export class NestedPickerPanel<TValue = unknown> extends Container implements Fo
 
   private visibleRows(): number {
     return Math.max(1, this.options.visibleRows ?? 10);
+  }
+
+  private leafVisibleRows(): number {
+    return Math.max(1, this.options.leafVisibleRows ?? this.visibleRows());
   }
 
   private reconcilePath(): void {

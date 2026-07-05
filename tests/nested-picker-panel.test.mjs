@@ -238,6 +238,21 @@ describe("NestedPickerPanel navigation and rendering", () => {
     assert.match(text, /line 3/);
   });
 
+  test("leafVisibleRows can make leaf content taller than picker rows", () => {
+    const picker = panel({
+      visibleRows: 2,
+      leafVisibleRows: 5,
+      rows: [{ id: "leaf", label: "leaf" }],
+      renderContent: () => Array.from({ length: 8 }, (_, index) => `line ${index}`),
+    });
+
+    picker.handleInput("enter");
+    const text = visibleText(picker);
+    assert.match(text, /line 0/);
+    assert.match(text, /line 4/);
+    assert.doesNotMatch(text, /line 5/);
+  });
+
   test("long string leaf lines wrap before scrolling", () => {
     const picker = panel({
       visibleRows: 2,

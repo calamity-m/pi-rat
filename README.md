@@ -85,10 +85,17 @@ The bundled `usage` extension adds a `/usage` TUI picker:
 
 1. Subscription usage
    - ChatGPT Codex
-2. Tokens
-3. Global Tokens
+2. System Prompt
+   - Compiled System Prompt
+   - Tools
+   - Skills
+   - Context Files
+3. Tokens
+4. Global Tokens
 
 Selecting ChatGPT Codex shows ChatGPT subscription usage for the active `openai-codex` model, including plan, email, 5-hour usage, weekly usage, reset times, fetch time, and source endpoint.
+
+Selecting System Prompt shows the compiled system prompt token estimate plus per-tool, per-skill, and per-context-file token estimates.
 
 Selecting Tokens lists local usage by provider/model across the current project's Pi session files; selecting a provider/model shows 30-day and all-time totals.
 
