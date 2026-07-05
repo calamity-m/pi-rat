@@ -8,3 +8,4 @@ npm-debug.log*
 *.tgz
 __pycache__/
 *.pyc
+.agents
