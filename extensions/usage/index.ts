@@ -1,6 +1,5 @@
-import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, relative } from "node:path";
+import { join } from "node:path";
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
@@ -11,17 +10,19 @@ import {
   type NestedPickerRow,
 } from "../lib/nested-picker-panel.ts";
 import {
-  aggregateTokenUsage,
-  buildTokenUsageDetails,
   buildUsageDetails,
   CHATGPT_BASE_URL,
   getTokenMetadata,
   isOpenAICodexProvider,
   parseUsageSnapshot,
-  type TokenUsageReport,
-  type TokenUsageSessionText,
   type UsageSnapshot,
-} from "./helpers.ts";
+} from "./subscriptions/index.ts";
+import {
+  aggregateTokenUsage,
+  buildTokenUsageDetails,
+  readSessionTexts,
+  type TokenUsageReport,
+} from "./tokens/index.ts";
 
 const USAGE_FETCH_TIMEOUT_MS = 15_000;
 
@@ -225,43 +226,6 @@ function rowId(value: string): string {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "") || "unknown"
   );
-}
-
-async function readSessionTexts(
-  sessionDir: string,
-  recursive = false,
-): Promise<TokenUsageSessionText[]> {
-  const sessions: TokenUsageSessionText[] = [];
-  await collectSessionTexts(sessionDir, sessionDir, recursive, sessions);
-  return sessions;
-}
-
-async function collectSessionTexts(
-  rootDir: string,
-  currentDir: string,
-  recursive: boolean,
-  sessions: TokenUsageSessionText[],
-): Promise<void> {
-  const entries = await readdir(currentDir, { withFileTypes: true });
-
-  for (const entry of entries) {
-    const path = join(currentDir, entry.name);
-    if (entry.isDirectory()) {
-      if (recursive) await collectSessionTexts(rootDir, path, recursive, sessions);
-      continue;
-    }
-
-    if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
-
-    try {
-      sessions.push({
-        sessionId: relative(rootDir, path) || entry.name,
-        content: await readFile(path, "utf8"),
-      });
-    } catch {
-      // Session files can be moved or rewritten while the report loads; skip races.
-    }
-  }
 }
 
 async function fetchChatGPTCodexUsage(ctx: ExtensionCommandContext): Promise<UsageSnapshot> {
