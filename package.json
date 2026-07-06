@@ -22,7 +22,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "tsc --noEmit && node --test tests/*.test.mjs",
+    "test": "tsc --noEmit && node --test \"extensions/**/test.mjs\" \"extensions/**/*.test.mjs\"",
     "test:smoke": "node --test tests/smoke.test.mjs",
     "validate:json": "node -e \"for (const f of ['themes/kanagawa.json','package.json']) JSON.parse(require('fs').readFileSync(f,'utf8')); console.log('json ok')\"",
     "format": "oxfmt .",
@@ -59,7 +59,9 @@
   },
   "pi": {
     "extensions": [
-      "./extensions"
+      "./extensions",
+      "!extensions/**/test.mjs",
+      "!extensions/**/*.test.mjs"
     ],
     "skills": [
       "./skills"

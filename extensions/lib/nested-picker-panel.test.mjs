@@ -6,12 +6,12 @@ import { pathToFileURL } from "node:url";
 import ts from "typescript";
 import { visibleWidth } from "@earendil-works/pi-tui";
 
-const projectRoot = resolve(import.meta.dirname, "..");
-const compiledPath = join(projectRoot, ".nested-picker-panel.test.mjs");
+const projectRoot = resolve(import.meta.dirname, "../..");
+const compiledPath = join(import.meta.dirname, ".nested-picker-panel.test.mjs");
 let NestedPickerPanel;
 
 before(async () => {
-  const source = await readFile(join(projectRoot, "extensions/lib/nested-picker-panel.ts"), "utf8");
+  const source = await readFile(join(import.meta.dirname, "nested-picker-panel.ts"), "utf8");
   const compiled = ts.transpileModule(source, {
     compilerOptions: {
       target: ts.ScriptTarget.ES2022,

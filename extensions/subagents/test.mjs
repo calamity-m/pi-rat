@@ -5,9 +5,9 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
 
-const projectRoot = resolve(import.meta.dirname, "..");
-const sourceDir = join(projectRoot, "extensions/subagents");
-const compiledDir = join(projectRoot, ".subagents-test");
+const projectRoot = resolve(import.meta.dirname, "../..");
+const sourceDir = import.meta.dirname;
+const compiledDir = join(import.meta.dirname, ".subagents-test");
 let helpers;
 
 const files = [

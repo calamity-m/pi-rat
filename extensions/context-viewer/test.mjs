@@ -5,19 +5,19 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
 
-const projectRoot = resolve(import.meta.dirname, "..");
-const compiledPath = join(projectRoot, ".context-viewer.test.mjs");
+const projectRoot = resolve(import.meta.dirname, "../..");
+const compiledPath = join(import.meta.dirname, ".context-viewer.test.mjs");
 let helpers;
 
 before(async () => {
-  let source = await readFile(join(projectRoot, "extensions/context-viewer.ts"), "utf8");
+  let source = await readFile(join(import.meta.dirname, "index.ts"), "utf8");
   source = source
     .replace(
-      /import \{[\s\S]*?\} from "\.\/lib\/nested-picker-panel\.ts";\n/,
+      /import \{[\s\S]*?\} from "\.\.\/lib\/nested-picker-panel\.ts";\n/,
       "const NestedPickerPanel = class {};\n",
     )
     .replace(
-      /import \{ currentThinkingBorderColor \} from "\.\/lib\/thinking-border\.ts";\n/,
+      /import \{ currentThinkingBorderColor \} from "\.\.\/lib\/thinking-border\.ts";\n/,
       "const currentThinkingBorderColor = () => (text) => text;\n",
     );
   const compiled = ts.transpileModule(source, {

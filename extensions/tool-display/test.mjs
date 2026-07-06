@@ -5,13 +5,13 @@ import { pathToFileURL } from "node:url";
 import { join, resolve } from "node:path";
 import ts from "typescript";
 
-const projectRoot = resolve(import.meta.dirname, "..");
-const compiledPath = join(projectRoot, ".tool-display.test.mjs");
+const projectRoot = resolve(import.meta.dirname, "../..");
+const compiledPath = join(import.meta.dirname, ".tool-display.test.mjs");
 let helpers;
 let toolDisplay;
 
 before(async () => {
-  const source = await readFile(join(projectRoot, "extensions/tool-display.ts"), "utf8");
+  const source = await readFile(join(import.meta.dirname, "index.ts"), "utf8");
   const compiled = ts.transpileModule(source, {
     compilerOptions: {
       target: ts.ScriptTarget.ES2022,

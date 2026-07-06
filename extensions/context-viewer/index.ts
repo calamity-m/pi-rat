@@ -10,8 +10,8 @@ import {
   NestedPickerPanel,
   type NestedPickerPanelTheme,
   type NestedPickerRow,
-} from "./lib/nested-picker-panel.ts";
-import { currentThinkingBorderColor } from "./lib/thinking-border.ts";
+} from "../lib/nested-picker-panel.ts";
+import { currentThinkingBorderColor } from "../lib/thinking-border.ts";
 
 const GRID_ROWS = 8;
 const GRID_COLUMNS = 11;

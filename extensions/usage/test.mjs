@@ -5,16 +5,16 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
 
-const projectRoot = resolve(import.meta.dirname, "..");
-const compiledSubscriptionPath = join(projectRoot, ".usage-subscriptions.test.mjs");
-const compiledTokensPath = join(projectRoot, ".usage-tokens.test.mjs");
-const compiledSystemPromptPath = join(projectRoot, ".usage-system-prompt.test.mjs");
+const projectRoot = resolve(import.meta.dirname, "../..");
+const compiledSubscriptionPath = join(import.meta.dirname, ".usage-subscriptions.test.mjs");
+const compiledTokensPath = join(import.meta.dirname, ".usage-tokens.test.mjs");
+const compiledSystemPromptPath = join(import.meta.dirname, ".usage-system-prompt.test.mjs");
 let helpers;
 
 before(async () => {
-  await compileUsageModule("extensions/usage/subscriptions/index.ts", compiledSubscriptionPath);
-  await compileUsageModule("extensions/usage/tokens/index.ts", compiledTokensPath);
-  await compileUsageModule("extensions/usage/system-prompt.ts", compiledSystemPromptPath);
+  await compileUsageModule("subscriptions/index.ts", compiledSubscriptionPath);
+  await compileUsageModule("tokens/index.ts", compiledTokensPath);
+  await compileUsageModule("system-prompt.ts", compiledSystemPromptPath);
 
   const subscriptions = await import(
     `${pathToFileURL(compiledSubscriptionPath).href}?t=${Date.now()}`
@@ -33,7 +33,7 @@ after(async () => {
 });
 
 async function compileUsageModule(sourcePath, outputPath) {
-  const source = await readFile(join(projectRoot, sourcePath), "utf8");
+  const source = await readFile(join(import.meta.dirname, sourcePath), "utf8");
   const compiled = ts.transpileModule(source, {
     compilerOptions: {
       target: ts.ScriptTarget.ES2022,

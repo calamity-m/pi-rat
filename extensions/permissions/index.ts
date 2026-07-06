@@ -12,7 +12,7 @@ import {
 
 import type { Component } from "@earendil-works/pi-tui";
 
-import type { NestedPickerContent, NestedPickerRow } from "./lib/nested-picker-panel.ts";
+import type { NestedPickerContent, NestedPickerRow } from "../lib/nested-picker-panel.ts";
 
 const PERMISSIONS_SETTINGS_KEY = "permissions";
 const APPROVE = "Approve";
@@ -178,8 +178,8 @@ async function showPermissionsPicker(
   policy: PermissionPolicy,
   approvals: readonly SessionApproval[],
 ): Promise<void> {
-  const { NestedPickerPanel } = await import("./lib/nested-picker-panel.ts");
-  const { currentThinkingBorderColor } = await import("./lib/thinking-border.ts");
+  const { NestedPickerPanel } = await import("../lib/nested-picker-panel.ts");
+  const { currentThinkingBorderColor } = await import("../lib/thinking-border.ts");
   const rows = buildPermissionsRows(policy, approvals);
 
   await ctx.ui.custom<void>((tui, theme, keybindings, done) => {

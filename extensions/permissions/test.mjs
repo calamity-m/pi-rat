@@ -5,12 +5,12 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
 
-const projectRoot = resolve(import.meta.dirname, "..");
-const compiledPath = join(projectRoot, ".permissions.test.mjs");
+const projectRoot = resolve(import.meta.dirname, "../..");
+const compiledPath = join(import.meta.dirname, ".permissions.test.mjs");
 let helpers;
 
 before(async () => {
-  const source = await readFile(join(projectRoot, "extensions/permissions.ts"), "utf8");
+  const source = await readFile(join(import.meta.dirname, "index.ts"), "utf8");
   const compiled = ts.transpileModule(source, {
     compilerOptions: {
       target: ts.ScriptTarget.ES2022,
