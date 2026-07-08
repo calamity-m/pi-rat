@@ -26,6 +26,12 @@ The bundled `autoformatter` extension runs configured formatter commands after s
 
 Project formatter rules override global rules by `languages`; language-less project rules override language-less global rules with the same `id`.
 
+## `nested-agents-files`
+
+The bundled `nested-agents-files` extension appends nested `AGENTS.md`/`CLAUDE.md` context when Pi successfully reads a file below the current working directory. It walks from the session cwd to the read file's directory, loads the first matching context file in each directory, and injects each context file at most once per session.
+
+Example: reading `src/my/stuff/a.py` can inject `src/AGENTS.md` and `src/my/stuff/AGENTS.md`; a later read of `src/my/stuff/b.py` will not inject those same files again.
+
 ## `/permissions`
 
 The bundled `permissions` extension gates Pi tool calls from global user settings at `~/.pi/agent/settings.json`. It defaults to allowing tool calls unless the first matching rule says to prompt or deny.
