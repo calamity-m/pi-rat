@@ -51,6 +51,22 @@ export interface NestedPickerContentContext<TValue = unknown> {
   width: number;
 }
 
+/** Context passed to configurable header renderers. */
+export interface NestedPickerHeaderContext<TValue = unknown> {
+  /** Full selected path, including the active leaf when leaf content is open. */
+  path: readonly NestedPickerRow<TValue>[];
+  /** Active terminal row when leaf content is open. */
+  activeLeaf?: NestedPickerRow<TValue>;
+  /** Available content width in terminal columns. */
+  width: number;
+}
+
+/** Content rendered above breadcrumbs, search, rows, and leaf content. */
+export type NestedPickerHeader<TValue = unknown> =
+  | string
+  | readonly string[]
+  | ((context: NestedPickerHeaderContext<TValue>) => string | readonly string[]);
+
 /** Context passed to row renderers. */
 export interface NestedPickerRowContext<TValue = unknown> {
   /** Current search query after trimming whitespace. */
@@ -78,8 +94,12 @@ export interface NestedPickerRowContext<TValue = unknown> {
  * navigation or cancel handling.
  */
 export interface NestedPickerPanelOptions<TValue = unknown> {
-  /** Panel title rendered above the breadcrumb and rows. */
+  /** Panel title rendered in the top border. */
   title: string;
+  /** Optional header rendered above breadcrumbs, search, rows, and leaf content. */
+  header?: NestedPickerHeader<TValue>;
+  /** Whether to show the current path breadcrumb. Defaults to true. */
+  showBreadcrumbs?: boolean;
   /** Root rows for the static picker tree. */
   rows: readonly NestedPickerRow<TValue>[];
   /** Whether to show a per-level search input above picker rows. */
@@ -153,12 +173,13 @@ export class NestedPickerPanel<TValue = unknown> extends Container implements Fo
     this.applyFocus();
   }
 
-  /** Render breadcrumb, optional search, rows or leaf content, and compact key help. */
+  /** Render optional header, breadcrumb, search, rows or leaf content, and compact key help. */
   render(width: number): string[] {
     if (width < 1) return [""];
 
     this.lastRenderWidth = width;
-    const lines = [this.breadcrumbLine()];
+    const lines = this.headerLines(width);
+    if (this.options.showBreadcrumbs !== false) lines.push(this.breadcrumbLine());
 
     if (this.activeLeaf) {
       lines.push(...this.contentLines(width));
@@ -294,7 +315,9 @@ export class NestedPickerPanel<TValue = unknown> extends Container implements Fo
     }
     const lines = typeof content === "string" ? content.replace(/\n$/, "").split("\n") : content;
     const rendered = [...lines].flatMap((line) =>
-      wrapTextWithAnsi(line, Math.max(1, width)).map((wrapped) => truncateToWidth(wrapped, width, "")),
+      wrapTextWithAnsi(line, Math.max(1, width)).map((wrapped) =>
+        truncateToWidth(wrapped, width, ""),
+      ),
     );
     this.lastLeafLineCount = rendered.length;
     this.leafScrollOffset = this.clampedLeafScroll(this.leafScrollOffset);
@@ -312,6 +335,17 @@ export class NestedPickerPanel<TValue = unknown> extends Container implements Fo
       this.applyFocus();
     }
     return this.activeContent;
+  }
+
+  private headerLines(width: number): string[] {
+    const header = this.options.header;
+    if (!header) return [];
+    const content =
+      typeof header === "function"
+        ? header({ path: this.fullActivePath(), activeLeaf: this.activeLeaf, width })
+        : header;
+    const lines = typeof content === "string" ? content.replace(/\n$/, "").split("\n") : content;
+    return [...lines].map((line) => truncateToWidth(line, width, ""));
   }
 
   private breadcrumbLine(): string {
@@ -401,9 +435,7 @@ export class NestedPickerPanel<TValue = unknown> extends Container implements Fo
   private shouldUseInputForEditorKey(data: string): boolean {
     if (!this.input || !this.input.getValue()) return false;
     return (
-      matchesKey(data, Key.left) ||
-      matchesKey(data, Key.right) ||
-      matchesKey(data, Key.backspace)
+      matchesKey(data, Key.left) || matchesKey(data, Key.right) || matchesKey(data, Key.backspace)
     );
   }
 

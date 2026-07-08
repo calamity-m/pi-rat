@@ -190,6 +190,36 @@ describe("NestedPickerPanel navigation and rendering", () => {
     assert.equal(cancels, 1);
   });
 
+  test("renders a configurable header above the breadcrumb", () => {
+    const picker = panel({
+      header: ({ path, width }) => [
+        `Header ${path.map((item) => item.label).join("/") || "root"}`,
+        `width ${width}`,
+      ],
+    });
+
+    let text = visibleText(picker, 40);
+    assert.match(text, /Header root/);
+    assert.match(text, /width 40/);
+    assert.ok(text.indexOf("Header root") < text.indexOf("Path: root"));
+
+    picker.handleInput("enter");
+    text = visibleText(picker, 40);
+    assert.match(text, /Header start/);
+  });
+
+  test("can hide breadcrumbs", () => {
+    const picker = panel({ showBreadcrumbs: false, header: "Custom header" });
+
+    let text = visibleText(picker);
+    assert.match(text, /Custom header/);
+    assert.doesNotMatch(text, /Path: root/);
+
+    picker.handleInput("enter");
+    text = visibleText(picker);
+    assert.doesNotMatch(text, /Path: start/);
+  });
+
   test("optional search filters rows and resets the selection safely", () => {
     const picker = panel({ enableSearch: true });
 
