@@ -81,6 +81,7 @@ async function showUsagePicker(ctx: ExtensionCommandContext): Promise<void> {
   await ctx.ui.custom<void>((tui, theme, keybindings, done) => {
     return new NestedPickerPanel<UsageRowValue>({
       title: "usage",
+      rootBreadcrumbLabel: "Usage",
       rows,
       visibleRows: 8,
       leafVisibleRows: 18,

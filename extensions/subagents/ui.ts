@@ -88,6 +88,7 @@ async function showDashboard(
     const requestRender = () => tui.requestRender();
     const panel = new NestedPickerPanel<RowValue>({
       title: "subagents",
+      rootBreadcrumbLabel: "Subagents",
       rows: buildRows(store, presets),
       enableSearch: true,
       visibleRows: 10,

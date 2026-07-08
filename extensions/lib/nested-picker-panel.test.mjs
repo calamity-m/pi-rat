@@ -110,11 +110,11 @@ describe("NestedPickerPanel navigation and rendering", () => {
     assert.match(visibleText(picker), /start/);
 
     picker.handleInput("enter");
-    assert.match(visibleText(picker), /Path: start/);
+    assert.match(visibleText(picker), /Path: root -> start/);
     assert.match(visibleText(picker), /middle/);
 
     picker.handleInput("enter");
-    assert.match(visibleText(picker), /Path: start -> middle/);
+    assert.match(visibleText(picker), /Path: root -> start -> middle/);
     assert.match(visibleText(picker), /end/);
   });
 
@@ -160,16 +160,16 @@ describe("NestedPickerPanel navigation and rendering", () => {
 
     picker.handleInput("enter");
     picker.handleInput("enter");
-    assert.match(visibleText(picker), /Path: start -> middle/);
+    assert.match(visibleText(picker), /Path: root -> start -> middle/);
 
     picker.handleInput("enter");
-    assert.match(visibleText(picker), /Path: start -> middle -> end/);
+    assert.match(visibleText(picker), /Path: root -> start -> middle -> end/);
 
     picker.handleInput("\x1b[D");
-    assert.match(visibleText(picker), /Path: start -> middle/);
+    assert.match(visibleText(picker), /Path: root -> start -> middle/);
 
     picker.handleInput("\x1b[D");
-    assert.match(visibleText(picker), /Path: start/);
+    assert.match(visibleText(picker), /Path: root -> start/);
 
     picker.handleInput("\x7f");
     assert.match(visibleText(picker), /Path: root/);
@@ -218,6 +218,16 @@ describe("NestedPickerPanel navigation and rendering", () => {
     picker.handleInput("enter");
     text = visibleText(picker);
     assert.doesNotMatch(text, /Path: start/);
+  });
+
+  test("can rename the root breadcrumb", () => {
+    const picker = panel({ rootBreadcrumbLabel: "/picker" });
+
+    assert.match(visibleText(picker), /Path: \/picker/);
+    assert.doesNotMatch(visibleText(picker), /Path: root/);
+
+    picker.handleInput("enter");
+    assert.match(visibleText(picker), /Path: \/picker -> start/);
   });
 
   test("optional search filters rows and resets the selection safely", () => {

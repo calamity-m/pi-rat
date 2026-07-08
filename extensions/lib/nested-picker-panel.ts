@@ -100,6 +100,8 @@ export interface NestedPickerPanelOptions<TValue = unknown> {
   header?: NestedPickerHeader<TValue>;
   /** Whether to show the current path breadcrumb. Defaults to true. */
   showBreadcrumbs?: boolean;
+  /** Label used for the root breadcrumb. Defaults to "root". */
+  rootBreadcrumbLabel?: string;
   /** Root rows for the static picker tree. */
   rows: readonly NestedPickerRow<TValue>[];
   /** Whether to show a per-level search input above picker rows. */
@@ -350,7 +352,8 @@ export class NestedPickerPanel<TValue = unknown> extends Container implements Fo
 
   private breadcrumbLine(): string {
     const rows = this.fullActivePath();
-    const names = rows.length === 0 ? ["root"] : rows.map((row) => row.label);
+    const rootLabel = this.options.rootBreadcrumbLabel ?? "root";
+    const names = [rootLabel, ...rows.map((row) => row.label)];
     const lastIndex = names.length - 1;
     const rendered = names.map((name, index) =>
       index === lastIndex ? this.options.theme.fg("accent", name) : name,

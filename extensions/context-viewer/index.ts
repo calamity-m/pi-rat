@@ -592,6 +592,7 @@ async function showContextPicker(
   await ctx.ui.custom<void>((tui, theme, keybindings, done) => {
     return new NestedPickerPanel<RowValue>({
       title: "context",
+      rootBreadcrumbLabel: "Context",
       rows: breakdownRows(breakdown),
       enableSearch: true,
       visibleRows: 9,
