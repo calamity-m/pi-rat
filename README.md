@@ -32,6 +32,12 @@ The bundled `nested-agents-files` extension appends nested `AGENTS.md`/`CLAUDE.m
 
 Example: reading `src/my/stuff/a.py` can inject `src/AGENTS.md` and `src/my/stuff/AGENTS.md`; a later read of `src/my/stuff/b.py` will not inject those same files again.
 
+## `nested-prompts`
+
+The bundled `nested-prompts` extension recursively registers Markdown prompt templates below the global `~/.pi/agent/prompts/` directory. Pi already discovers `~/.pi/agent/prompts/*.md`; this extension adds files matching `~/.pi/agent/prompts/**/*.md`. Run `/reload` after adding, moving, or removing prompt files.
+
+Prompt command names remain the Markdown filename without `.md`, regardless of subdirectory. Avoid duplicate filenames because Pi resolves templates by command name.
+
 ## `/permissions`
 
 The bundled `permissions` extension gates Pi tool calls from global user settings at `~/.pi/agent/settings.json`. It defaults to allowing tool calls unless the first matching rule says to prompt or deny.
