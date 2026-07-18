@@ -14,6 +14,7 @@ const files = [
   "types.ts",
   "store.ts",
   "model-resolution.ts",
+  "model-runtime.ts",
   "settings.ts",
   "preset-agents.ts",
   "prompt.ts",
@@ -36,15 +37,24 @@ before(async () => {
       .outputText.replaceAll('.ts"', '.mjs"');
     await writeFile(join(compiledDir, file.replace(/\.ts$/, ".mjs")), compiled, "utf8");
   }
-  const [model, settings, prompt, store, toolSummary, display] = await Promise.all([
+  const [model, modelRuntime, settings, prompt, store, toolSummary, display] = await Promise.all([
     import(`${pathToFileURL(join(compiledDir, "model-resolution.mjs")).href}?t=${Date.now()}`),
+    import(`${pathToFileURL(join(compiledDir, "model-runtime.mjs")).href}?t=${Date.now()}`),
     import(`${pathToFileURL(join(compiledDir, "settings.mjs")).href}?t=${Date.now()}`),
     import(`${pathToFileURL(join(compiledDir, "prompt.mjs")).href}?t=${Date.now()}`),
     import(`${pathToFileURL(join(compiledDir, "store.mjs")).href}?t=${Date.now()}`),
     import(`${pathToFileURL(join(compiledDir, "tool-summary.mjs")).href}?t=${Date.now()}`),
     import(`${pathToFileURL(join(compiledDir, "display.mjs")).href}?t=${Date.now()}`),
   ]);
-  helpers = { ...model, ...settings, ...prompt, ...store, ...toolSummary, ...display };
+  helpers = {
+    ...model,
+    ...modelRuntime,
+    ...settings,
+    ...prompt,
+    ...store,
+    ...toolSummary,
+    ...display,
+  };
 });
 
 after(async () => {
@@ -124,6 +134,62 @@ describe("subagent model helpers", () => {
     );
     assert.equal(resolved.modelId, "anthropic/claude");
     assert.match(resolved.source, /fallback/);
+  });
+});
+
+describe("subagent model runtime", () => {
+  test("copies registered providers and the selected model runtime API key", async () => {
+    const registrations = [];
+    const runtimeKeys = [];
+    const runtime = {
+      registerProvider(providerId, config) {
+        registrations.push([providerId, config]);
+      },
+      async setRuntimeApiKey(providerId, apiKey) {
+        runtimeKeys.push([providerId, apiKey]);
+      },
+    };
+    const configs = new Map([
+      ["anthropic", { baseUrl: "https://proxy.example.com" }],
+      ["custom", { api: "openai-completions" }],
+    ]);
+    const registry = {
+      getRegisteredProviderIds: () => [...configs.keys()],
+      getRegisteredProviderConfig: (providerId) => configs.get(providerId),
+      async getApiKeyAndHeaders() {
+        return { ok: true, apiKey: "runtime-key" };
+      },
+    };
+
+    await helpers.configureSubagentModelRuntime(runtime, registry, {
+      provider: "anthropic",
+      id: "claude",
+    });
+
+    assert.deepEqual(registrations, [...configs.entries()]);
+    assert.deepEqual(runtimeKeys, [["anthropic", "runtime-key"]]);
+  });
+
+  test("does not invent a runtime API key for header-only auth", async () => {
+    let runtimeKeySet = false;
+    await helpers.configureSubagentModelRuntime(
+      {
+        registerProvider() {},
+        async setRuntimeApiKey() {
+          runtimeKeySet = true;
+        },
+      },
+      {
+        getRegisteredProviderIds: () => [],
+        getRegisteredProviderConfig: () => undefined,
+        async getApiKeyAndHeaders() {
+          return { ok: true, headers: { Authorization: "custom" } };
+        },
+      },
+      { provider: "custom", id: "model" },
+    );
+
+    assert.equal(runtimeKeySet, false);
   });
 });
 

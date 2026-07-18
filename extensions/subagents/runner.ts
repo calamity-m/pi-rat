@@ -1,11 +1,15 @@
+import { join } from "node:path";
+
 import {
   createAgentSession,
   DefaultResourceLoader,
   getAgentDir,
+  ModelRuntime,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
+import { configureSubagentModelRuntime } from "./model-runtime.ts";
 import { buildSubagentPrompt, extractFinalAssistantText, preloadFiles } from "./prompt.ts";
 import { formatCancellationResult } from "./store.ts";
 import type {
@@ -59,20 +63,29 @@ export async function runSubagent(
     if (signal?.aborted) markAborted();
     if (isCancelled()) return finishCancelled();
 
+    const agentDir = getAgentDir();
     const loader = new DefaultResourceLoader({
       cwd: ctx.cwd,
-      agentDir: getAgentDir(),
+      agentDir,
       noExtensions: true,
     });
     await loader.reload();
     if (isCancelled()) return finishCancelled();
 
+    const modelRuntime = await ModelRuntime.create({
+      authPath: join(agentDir, "auth.json"),
+      modelsPath: join(agentDir, "models.json"),
+      allowModelNetwork: false,
+    });
+    await configureSubagentModelRuntime(modelRuntime, ctx.modelRegistry, selection.model);
+    if (isCancelled()) return finishCancelled();
+
     const { session } = await createAgentSession({
       cwd: ctx.cwd,
-      agentDir: getAgentDir(),
+      agentDir,
       model: selection.model,
       thinkingLevel: selection.thinkingLevel,
-      modelRegistry: ctx.modelRegistry,
+      modelRuntime,
       resourceLoader: loader,
       sessionManager: SessionManager.inMemory(ctx.cwd),
       tools: toolPolicyNames[policy],
