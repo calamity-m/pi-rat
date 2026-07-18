@@ -38,6 +38,12 @@ The bundled `nested-prompts` extension recursively registers Markdown prompt tem
 
 Prompt command names remain the Markdown filename without `.md`, regardless of subdirectory. Avoid duplicate filenames because Pi resolves templates by command name.
 
+## `/tools`
+
+The bundled `tools` extension adds a searchable `/tools` picker for enabling and disabling built-in, SDK-provided, and extension-registered custom tools. Changes apply immediately to the next model request and update Pi's active tool schemas, system-prompt tool snippets, and tool-specific guidelines.
+
+Selections persist in the current session branch and are restored after reload or tree navigation. The `/tools` command remains available even when every model tool is disabled.
+
 ## `/permissions`
 
 The bundled `permissions` extension gates Pi tool calls from global user settings at `~/.pi/agent/settings.json`. It defaults to allowing tool calls unless the first matching rule says to prompt or deny.
